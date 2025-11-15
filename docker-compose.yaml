@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+
+  assistant-orchestrator:
+    image: assistant-orchestrator:1
+    container_name: assistant-orchestrator
+    ports:
+      - '8000:8000'
+    environment:
+      LLM_PROXY_SERVICE_API_URL: https://codemie.lab.epam.com/llms
+      LLM_PROXY_SERVICE_API_KEY: sk-*********************
+    restart: unless-stopped
