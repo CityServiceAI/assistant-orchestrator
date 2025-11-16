@@ -5,7 +5,7 @@ TOXIC_PATTERNS = [
     r"\b(хуй|пизд|бляд|сука|ебан)\w*",
 ]
 
-
+#ToDo Це робота LLM моделі
 def detect_toxicity(text: str) -> bool:
     lowered = text.lower()
     for pattern in TOXIC_PATTERNS:

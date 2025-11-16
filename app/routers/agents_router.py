@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 from app.schemas.agents import NormalizerRequest, NormalizerResponse
-from app.agents.normalizer import NormalizerAgent
+from app.agents.normalizer import PlainNormalizerAgent
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
-normalizer = NormalizerAgent()
+normalizer = PlainNormalizerAgent()
 
 
 @router.post("/normalize", response_model=NormalizerResponse)
