@@ -6,8 +6,14 @@ from app.schemas.agents import (
     NormalizerWarning,
 )
 from app.tools.normalizer_tool import normalize_text
+from app.schemas.agents import (
+    CategoryDetectionRequest,
+    CategoryDetectionResponse,
+)
+from app.agents.category_classifier import CategoryClassifierAgent
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+category_agent = CategoryClassifierAgent()
 
 
 def _warning_message(code: str) -> str:
@@ -34,4 +40,20 @@ async def normalize_text_endpoint(body: NormalizerRequest) -> NormalizerResponse
         truncated=truncated,
         safe=safe,
         warnings=warnings,
+    )
+
+
+@router.post("/category", response_model=CategoryDetectionResponse)
+def detect_category(req: CategoryDetectionRequest) -> CategoryDetectionResponse:
+    result = category_agent.run(req.text)
+
+    return CategoryDetectionResponse(
+        category=result.category,
+        confidence=result.confidence,
+        need_clarification=result.need_clarification,
+        clarification_question=result.clarification_question,
+        model=result.model,
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        total_tokens=result.total_tokens,
     )

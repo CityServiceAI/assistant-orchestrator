@@ -1,27 +1,27 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 
 @dataclass
 class LLMCallRecord:
     agent: str
     model: str
-    prompt_tokens: int | None
-    completion_tokens: int | None
-    total_tokens: int | None
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 
 @dataclass
 class PipelineContext:
     raw_text: str
+    normalized_text: str | None = None
+    normalizer_safe: bool | None = None
+    normalizer_warnings: list[str] = field(default_factory=list)
+    cleaned_text_uk: str | None = None
+    category: str | None = None
+    category_confidence: float | None = None
+    category_need_clarification: bool = False
+    category_clarification_question: str | None = None
+    llm_calls: list[LLMCallRecord] = field(default_factory=list)
 
-    normalized_text: Optional[str] = None
-    normalizer_safe: bool = True
-    normalizer_warnings: List[str] = field(default_factory=list)
-
-    cleaned_text_uk: Optional[str] = None
-
-    llm_calls: List[LLMCallRecord] = field(default_factory=list)
-
-    def add_llm_call(self, record: LLMCallRecord):
+    def add_llm_call(self, record: LLMCallRecord) -> None:
         self.llm_calls.append(record)
