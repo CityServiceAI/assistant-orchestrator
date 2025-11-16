@@ -1,5 +1,13 @@
 from openai import AzureOpenAI
+from pydantic import BaseModel
 from app.config import settings
+
+
+class LLMCallConfig(BaseModel):
+    model: str
+    temperature: float = 0.2
+    max_tokens: int | None = None
+
 
 client = AzureOpenAI(
     api_key=settings.llm_key,
@@ -8,9 +16,11 @@ client = AzureOpenAI(
 )
 
 
-def chat_completion(model: str, messages: list[dict], **kwargs):
-    return client.chat.completions.create(
-        model=model,
+def chat_completion(config: LLMCallConfig, messages: list[dict]):
+    response = client.chat.completions.create(
+        model=config.model,
         messages=messages,
-        **kwargs,
+        temperature=config.temperature,
+        max_tokens=config.max_tokens,
     )
+    return response

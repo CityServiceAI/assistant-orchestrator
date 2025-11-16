@@ -1,14 +1,10 @@
 from pydantic import BaseModel, Field
-from typing import List, Literal, Optional
+from typing import List
 
 
 class NormalizerRequest(BaseModel):
     text: str = Field(
         ..., description="Сирий текст від користувача (скарга/опис проблеми)"
-    )
-    locale: Literal["uk", "en"] = "uk"
-    source: Optional[str] = Field(
-        default=None,
     )
 
 
