@@ -2,7 +2,6 @@ from openai import AzureOpenAI
 from pydantic import BaseModel
 from app.config import settings
 
-
 class LLMCallConfig(BaseModel):
     model: str
     temperature: float = 0.2

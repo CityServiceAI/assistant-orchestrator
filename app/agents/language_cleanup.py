@@ -68,8 +68,6 @@ class LanguageCleanupAgent:
             cleaned_text=content.strip(),
             model=LANGUAGE_CLEANUP_CONFIG.model,
             prompt_tokens=getattr(usage, "prompt_tokens", None) if usage else None,
-            completion_tokens=getattr(usage, "completion_tokens", None)
-            if usage
-            else None,
+            completion_tokens=getattr(usage, "completion_tokens", None) if usage else None,
             total_tokens=getattr(usage, "total_tokens", None) if usage else None,
         )

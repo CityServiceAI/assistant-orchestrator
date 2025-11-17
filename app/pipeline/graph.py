@@ -1,5 +1,6 @@
 from langgraph.graph import StateGraph, END
-from app.pipeline.state import ComplaintState
+
+from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.pipeline.nodes import (
     normalize_node,
     language_cleanup_node,
@@ -8,12 +9,12 @@ from app.pipeline.nodes import (
 
 
 def build_complaint_graph():
-    graph = StateGraph(ComplaintState)
+    graph = StateGraph(ConversationGraphState)
 
     graph.add_node("normalize", normalize_node)
     graph.add_node("language_cleanup", language_cleanup_node)
     graph.add_node("category", category_node)
-
+    #
     graph.set_entry_point("normalize")
 
     graph.add_edge("normalize", "language_cleanup")
