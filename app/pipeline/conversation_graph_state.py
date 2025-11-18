@@ -1,10 +1,9 @@
-from doctest import debug
-from typing import List, Optional
+from typing import Optional
 import operator
-from langgraph.graph import add_messages
-from typing_extensions import TypedDict, Annotated
-from app.pipeline.context import LLMCallRecord
-from dataclasses import dataclass, asdict
+import operator
+from typing import Optional
+
+from typing_extensions import Annotated, TypedDict
 
 
 class ConversationGraphState(TypedDict, total=False):
@@ -12,17 +11,10 @@ class ConversationGraphState(TypedDict, total=False):
 
     #ToDo Не накращий спосіб, мені здається має бути кращі варіанти
     message: str
-    debug: Annotated[list, operator.add]
+    trace: Annotated[list, operator.add]
 
     conversation_id: str
-    aggregated_raw_text: str
-    user_turns: List[str]
-    raw_text: str
-    normalized_text: Optional[str]
-    normalizer_safe: Optional[bool]
-    normalizer_warnings: List[str]
     category: Optional[str]
     category_confidence: Optional[float]
     category_need_clarification: bool
-    category_clarification_question: Optional[str]
-    llm_calls: List[LLMCallRecord]
+    clarification_count: Optional[int]

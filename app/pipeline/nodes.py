@@ -5,6 +5,7 @@ from langgraph.graph import END
 from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.language_cleanup import LanguageCleanupAgent
 from app.pipeline.conversation_graph_state import ConversationGraphState
+from app.agents.service_agent import ServiceAgent
 from app.tools.normalizer_tool import normalize_text
 
 language_agent = LanguageCleanupAgent()
@@ -20,7 +21,7 @@ def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
 
     return {
         "message": normalized_text,
-        "debug": [{
+        "trace": [{
             "node": "normalize_node",
             "input_text": user_input,
             "output_text": normalized_text,
@@ -36,7 +37,7 @@ def language_cleanup_node(state: ConversationGraphState):
 
     return {
         "message": result['assistant_response'],
-        "debug": [{
+        "trace": [{
             "agent": "language_cleanup",
             "input_text": state['message'],
             **result
@@ -61,19 +62,67 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
         "category_confidence": result["confidence"],
         "category_need_clarification": result["need_clarification"],
         "messages": assistant_message,
-        "debug": [{
+        "trace": [{
             **result,
             "agent": "category-classifier",
             "input_text": state['message']
         }]
     }
 
+def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
+    logging.info("search_service_node")
 
-def router_node(state: ConversationGraphState) -> str:
-    if state.get("normalizer_safe") is False:
-        return END
+    result = ServiceAgent().run("H1.1.1")
 
-    if state.get("category_need_clarification"):
-        return END
+    return {
+        "trace": [{
+            **result,
+            "agent": "service"
+        }]
+    }
 
-    return END
+def ask_clarification_node(state: ConversationGraphState):
+    logging.info("ask_clarification node")
+    return state
+
+def generate_appeal_node(state: ConversationGraphState):
+    logging.info("generate_appeal node")
+    return {
+        "messages": [{"role": "assistant", "content": "Ну що я можу сказати, беріть відро та черпайте"}]
+    }
+
+
+def route_after_classification(state: ConversationGraphState):
+    logging.info("route_after_classification")
+    category = state.get("category")
+    category_confidence = state.get("category_confidence")
+    clarification_count = state.get("clarification_count", 0)
+
+    if category is None and category_confidence < 90 :
+        if clarification_count > 10:
+            logging.info("Route to handle_failure")
+            return "handle_failure"
+
+        logging.info("Route to ask_clarification")
+        return "ask_clarification"
+
+    logging.info("Route to service_search")
+    return "service_search"
+
+
+def route_after_service_search(state: ConversationGraphState):
+    logging.info(f"Route after search. State: {state}")
+
+    if state.get('category') == "YARD_TERRITORY":
+        return "generate_appeal"
+
+    return "handle_failure"
+
+
+def handle_failure_node(state: ConversationGraphState):
+    return {
+        "messages": [
+            {"role": "assistant", "content": "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"},
+            {"role": "assistant", 'content': 'Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua'}
+        ]
+    }

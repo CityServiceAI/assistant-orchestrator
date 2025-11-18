@@ -20,7 +20,7 @@ def as_model(state):
     return {
         "id": "123",
         "messages": list(map(lambda x: message_as_json(x), state["messages"])),
-        "debug": state['debug'],
+        "trace": state['trace'],
         "context": {
             "issue_category": state["category"],
             "issue_address": "",
