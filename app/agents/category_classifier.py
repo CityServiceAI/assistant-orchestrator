@@ -1,9 +1,10 @@
 import json
 import re
 from enum import Enum
+import logging
+from app.deps.litellm_client import client
 
-from app.config import settings
-from app.deps.litellm_client import LLMCallConfig, client
+LLM_MODEL = "gpt-4.1-mini"
 
 
 class CategoryCode(str, Enum):
@@ -95,14 +96,6 @@ SYSTEM_CATEGORY_PROMPT = f"""
 НЕ додавайте жодних пояснень поза JSON.
 """
 
-CATEGORY_CLASSIFIER_CONFIG = LLMCallConfig(
-    model=getattr(
-        settings, "category_classifier_model", settings.language_cleanup_model
-    ),
-    temperature=0.0,
-    max_tokens=200,
-)
-
 
 class CategoryClassifierAgent:
     name = "category_classifier"
@@ -115,10 +108,10 @@ class CategoryClassifierAgent:
 
         messages = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}] + messages
         response = client.chat.completions.create(
-            model=CATEGORY_CLASSIFIER_CONFIG.model,
+            model=LLM_MODEL,
             messages=messages,
-            temperature=CATEGORY_CLASSIFIER_CONFIG.temperature,
-            max_tokens=CATEGORY_CLASSIFIER_CONFIG.max_tokens,
+            temperature=0.0,
+            max_tokens=200,
             response_format={"type": "json_object"}
         )
         content = response.choices[0].message.content
@@ -135,18 +128,22 @@ class CategoryClassifierAgent:
                         parts.append(t)
             content = "".join(parts)
 
-        response.model_dump_json(indent=2)
-        print(content)
+        logging.info(f"Category agent response {response.model_dump_json(indent=2)}")
         res_json = self.get_content_as_json(content)
+        logging.info(f"Category agent, extracted response {res_json}")
 
-        return {
-            **response.to_dict()['usage'],
+        result = {
             **res_json,
-            "model": CATEGORY_CLASSIFIER_CONFIG.model
+            "usage": response.usage.to_dict(),
+            "model": LLM_MODEL
         }
+
+        logging.info(f"Category agent, response {result}")
+        return result
 
     @staticmethod
     def get_content_as_json(raw_content):
+        logging.info(f"String to json convertor, raw content: {raw_content}")
         match = re.search(r"```json\n([\s\S]*?)\n```", raw_content)
 
         if match:
@@ -157,4 +154,7 @@ class CategoryClassifierAgent:
                 print(f"Помилка декодування JSON: {e}")
                 return None
         else:
-            return None
+            try:
+                return json.loads(raw_content)
+            except ValueError as e:
+                return None
