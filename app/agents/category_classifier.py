@@ -1,11 +1,10 @@
-from enum import Enum
 import json
-from typing import Optional
+import re
+from enum import Enum
+import logging
+from app.deps.litellm_client import client
 
-from pydantic import BaseModel, Field
-
-from app.deps.litellm_client import chat_completion, LLMCallConfig
-from app.config import settings
+LLM_MODEL = "gpt-4.1-mini"
 
 
 class CategoryCode(str, Enum):
@@ -18,31 +17,6 @@ class CategoryCode(str, Enum):
     PUBLIC_TRANSPORT = "PUBLIC_TRANSPORT"
     OTHER = "OTHER"
     NOT_MUNICIPAL = "NOT_MUNICIPAL"
-
-
-class CategoryDetectionResult(BaseModel):
-    category: CategoryCode | None = Field(
-        ...,
-        description="Код категорії або None, якщо її неможливо визначити.",
-    )
-    confidence: float = Field(
-        ...,
-        ge=0.0,
-        le=1.0,
-        description="Впевненість у класифікації [0,1].",
-    )
-    need_clarification: bool = Field(
-        ...,
-        description="Чи потрібно уточнення від користувача.",
-    )
-    clarification_question: Optional[str] = Field(
-        None,
-        description="Уточнююче запитання, якщо need_clarification=true, інакше null.",
-    )
-    model: Optional[str] = None
-    prompt_tokens: Optional[int] = None
-    completion_tokens: Optional[int] = None
-    total_tokens: Optional[int] = None
 
 
 CATEGORIES = [
@@ -95,7 +69,6 @@ CATEGORIES = [
 
 CATEGORIES_JSON = json.dumps(CATEGORIES, ensure_ascii=False, indent=2)
 
-
 SYSTEM_CATEGORY_PROMPT = f"""
 Ви — класифікатор звернень до міських комунальних служб.
 
@@ -124,31 +97,27 @@ SYSTEM_CATEGORY_PROMPT = f"""
 """
 
 
-CATEGORY_CLASSIFIER_CONFIG = LLMCallConfig(
-    model=getattr(
-        settings, "category_classifier_model", settings.language_cleanup_model
-    ),
-    temperature=0.0,
-    max_tokens=200,
-)
-
-
 class CategoryClassifierAgent:
     name = "category_classifier"
 
-    def run(self, cleaned_text_uk: str) -> CategoryDetectionResult:
+    def run(self, messages: list[dict], next_message):
         """
         Вхід: вже очищений та нормалізований український текст (мовним агентом).
         Вихід: CategoryDetectionResult з полями category/confidence/need_clarification/clarification_question.
         """
 
-        messages = [
-            {"role": "system", "content": SYSTEM_CATEGORY_PROMPT},
-            {"role": "user", "content": cleaned_text_uk},
-        ]
-        response = chat_completion(CATEGORY_CLASSIFIER_CONFIG, messages)
-        msg = response.choices[0].message
-        content = getattr(msg, "content", None)
+        llm_request  = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}]
+        llm_request += messages
+        llm_request += [{"rile": "user", "content": next_message}]
+
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=llm_request,
+            temperature=0.0,
+            max_tokens=200,
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content
 
         if isinstance(content, list):
             parts: list[str] = []
@@ -162,16 +131,33 @@ class CategoryClassifierAgent:
                         parts.append(t)
             content = "".join(parts)
 
-        if content is None:
-            content = ""
+        logging.info(f"Category agent response {response.model_dump_json(indent=2)}")
+        res_json = self.get_content_as_json(content)
+        logging.info(f"Category agent, extracted response {res_json}")
 
-        result = CategoryDetectionResult.model_validate_json(content)
-        usage = getattr(response, "usage", None)
-        result.model = CATEGORY_CLASSIFIER_CONFIG.model
-        result.prompt_tokens = getattr(usage, "prompt_tokens", None) if usage else None
-        result.completion_tokens = (
-            getattr(usage, "completion_tokens", None) if usage else None
-        )
-        result.total_tokens = getattr(usage, "total_tokens", None) if usage else None
+        result = {
+            **res_json,
+            "usage": response.usage.to_dict(),
+            "model": LLM_MODEL
+        }
 
+        logging.info(f"Category agent, response {result}")
         return result
+
+    @staticmethod
+    def get_content_as_json(raw_content):
+        logging.info(f"String to json convertor, raw content: {raw_content}")
+        match = re.search(r"```json\n([\s\S]*?)\n```", raw_content)
+
+        if match:
+            json_string = match.group(1)
+            try:
+                return json.loads(json_string)
+            except json.JSONDecodeError as e:
+                print(f"Помилка декодування JSON: {e}")
+                return None
+        else:
+            try:
+                return json.loads(raw_content)
+            except ValueError as e:
+                return None

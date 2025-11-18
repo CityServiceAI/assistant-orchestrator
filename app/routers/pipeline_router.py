@@ -6,7 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.pipeline.graph import build_complaint_graph
-from app.pipeline.state import ComplaintState
+from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.storage import complaint_state_store
 from app.schemas.pipeline import LLMCallInfo
 
@@ -44,7 +44,7 @@ def complaint_step(req: ComplaintStepRequest) -> ComplaintStepResponse:
         state = complaint_state_store.get(req.conversation_id)
         if state is None:
             conversation_id = req.conversation_id
-            state = ComplaintState(
+            state = ConversationGraphState(
                 conversation_id=conversation_id,
                 aggregated_raw_text="",
                 user_turns=[],
@@ -54,7 +54,7 @@ def complaint_step(req: ComplaintStepRequest) -> ComplaintStepResponse:
             conversation_id = req.conversation_id
     else:
         conversation_id = str(uuid4())
-        state = ComplaintState(
+        state = ConversationGraphState(
             conversation_id=conversation_id,
             aggregated_raw_text="",
             user_turns=[],

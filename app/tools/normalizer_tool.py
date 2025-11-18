@@ -1,10 +1,14 @@
-# app/services/normalizer.py
+import os
 import re
-import unicodedata
 from typing import List, Tuple
 
-from app.config import settings
+import unicodedata
+
 from app.services.safety import detect_prompt_injection
+
+NORMALIZER_INPUT_HARD_LIMIT = int(os.getenv('NORMALIZER_INPUT_HARD_LIMIT', 12000))
+NORMALIZER_PRESERVE_NEWLINES = bool(os.getenv('NORMALIZER_PRESERVE_NEWLINES', True))
+NORMALIZER_MAX_CHARS = int(os.getenv('NORMALIZER_MAX_CHARS', 3000))
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
 _ZERO_WIDTH_RE = re.compile(
@@ -58,7 +62,7 @@ def normalize_text(raw: str) -> Tuple[str, bool, List[str], bool]:
     if raw is None:
         return "", False, ["EMPTY_INPUT"], True
 
-    if len(raw) > settings.normalizer_input_hard_limit:
+    if len(raw) > NORMALIZER_INPUT_HARD_LIMIT:
         preview, _ = _hard_truncate(raw, 200)
         warnings.append("INPUT_TOO_LONG")
         return preview, False, warnings, False
@@ -67,9 +71,9 @@ def normalize_text(raw: str) -> Tuple[str, bool, List[str], bool]:
     text = _remove_control_chars(text)
     text = _remove_zero_width(text)
     text = _normalize_whitespace(
-        text, preserve_newlines=settings.normalizer_preserve_newlines
+        text, preserve_newlines=NORMALIZER_PRESERVE_NEWLINES
     )
-    text, truncated = _hard_truncate(text, settings.normalizer_max_chars)
+    text, truncated = _hard_truncate(text, NORMALIZER_MAX_CHARS)
 
     if truncated:
         warnings.append("TRUNCATED")
