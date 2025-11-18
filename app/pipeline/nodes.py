@@ -45,21 +45,27 @@ def language_cleanup_node(state: ConversationGraphState):
 
 
 def category_node(state: ConversationGraphState) -> ConversationGraphState:
-    if "category" in state:
-        return {}
-
     if "message" not in state:
         raise Exception("No message in stage")
 
     agent = CategoryClassifierAgent()
-    result = agent.run(state['messages'])
+    result = agent.run(state['messages'], state['message'])
+
+    if result.get("clarification_question") is not None:
+        assistant_message = [{"role": "assistant", "content": result["clarification_question"]}]
+    else:
+        assistant_message = []
+
     return {
         "category": result["category"],
         "category_confidence": result["confidence"],
         "category_need_clarification": result["need_clarification"],
-        "messages": [{"role": "assistant",
-                      "content": result["clarification_question"]}] if "clarification_question" in result else [],
-        "debug": [{**result, "agent": "category_classifier"}]
+        "messages": assistant_message,
+        "debug": [{
+            **result,
+            "agent": "category-classifier",
+            "input_text": state['message']
+        }]
     }
 
 

@@ -100,16 +100,19 @@ SYSTEM_CATEGORY_PROMPT = f"""
 class CategoryClassifierAgent:
     name = "category_classifier"
 
-    def run(self, messages: list[dict]):
+    def run(self, messages: list[dict], next_message):
         """
         Вхід: вже очищений та нормалізований український текст (мовним агентом).
         Вихід: CategoryDetectionResult з полями category/confidence/need_clarification/clarification_question.
         """
 
-        messages = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}] + messages
+        llm_request  = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}]
+        llm_request += messages
+        llm_request += [{"rile": "user", "content": next_message}]
+
         response = client.chat.completions.create(
             model=LLM_MODEL,
-            messages=messages,
+            messages=llm_request,
             temperature=0.0,
             max_tokens=200,
             response_format={"type": "json_object"}

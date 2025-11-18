@@ -8,7 +8,7 @@ from app.services.safety import detect_prompt_injection
 
 NORMALIZER_INPUT_HARD_LIMIT = int(os.getenv('NORMALIZER_INPUT_HARD_LIMIT', 12000))
 NORMALIZER_PRESERVE_NEWLINES = bool(os.getenv('NORMALIZER_PRESERVE_NEWLINES', True))
-NORMALIZER_MAX_CHARS = bool(os.getenv('NORMALIZER_MAX_CHARS', 3000))
+NORMALIZER_MAX_CHARS = int(os.getenv('NORMALIZER_MAX_CHARS', 3000))
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
 _ZERO_WIDTH_RE = re.compile(
