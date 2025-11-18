@@ -1,11 +1,9 @@
 import logging
 
-from langgraph.graph import END
-
 from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.language_cleanup import LanguageCleanupAgent
-from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.agents.service_agent import ServiceAgent
+from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
 
 language_agent = LanguageCleanupAgent()
@@ -70,7 +68,7 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
     }
 
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
-    logging.info("search_service_node")
+    logging.info(f"Search service node. State: {state}")
 
     result = ServiceAgent().run("H1.1.1")
 
@@ -82,18 +80,18 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
     }
 
 def ask_clarification_node(state: ConversationGraphState):
-    logging.info("ask_clarification node")
+    logging.info("Ask clarification node.")
     return state
 
 def generate_appeal_node(state: ConversationGraphState):
-    logging.info("generate_appeal node")
+    logging.info(f"Generate appeal node: State: {state}")
     return {
         "messages": [{"role": "assistant", "content": "Ну що я можу сказати, беріть відро та черпайте"}]
     }
 
 
 def route_after_classification(state: ConversationGraphState):
-    logging.info("route_after_classification")
+    logging.info(f"Route after classification. State {state}")
     category = state.get("category")
     category_confidence = state.get("category_confidence")
     clarification_count = state.get("clarification_count", 0)

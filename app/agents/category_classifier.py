@@ -108,7 +108,7 @@ class CategoryClassifierAgent:
 
         llm_request  = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}]
         llm_request += messages
-        llm_request += [{"rile": "user", "content": next_message}]
+        llm_request += [{"role": "user", "content": next_message}]
 
         response = client.chat.completions.create(
             model=LLM_MODEL,
