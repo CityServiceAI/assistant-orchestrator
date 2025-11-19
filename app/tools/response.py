@@ -34,3 +34,10 @@ def get_content_as_str(content):
                     parts.append(t)
         content = "".join(parts)
     return content.strip() if content is not None else None
+
+
+def assistant_msg(content):
+    return {
+        "role": "assistant",
+        "content": content,
+    }

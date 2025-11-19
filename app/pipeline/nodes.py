@@ -7,6 +7,7 @@ from app.agents.service_agent import ServiceAgent
 from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
 from app.data.rag import rag_search_categories
+from app.tools.response import assistant_msg
 
 category_agent = CategoryClassifierAgent()
 
@@ -159,12 +160,7 @@ def ask_clarification_node(state: ConversationGraphState):
 def generate_appeal_node(state: ConversationGraphState):
     logging.info(f"Generate appeal node: State: {state}")
     return {
-        "messages": [
-            {
-                "role": "assistant",
-                "content": "Дякуємо за звернення",
-            }
-        ]
+        "messages": [assistant_msg("Дякуємо за звернення")]
     }
 
 
@@ -207,32 +203,26 @@ def route_after_service_search(state: ConversationGraphState):
 def handle_failure_node(state: ConversationGraphState):
     return {
         "messages": [
-            {
-                "role": "assistant",
-                "content": "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему",
-            },
-            {
-                "role": "assistant",
-                "content": "Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua",
-            },
+            assistant_msg("Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"),
+            assistant_msg("Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua")
         ]
     }
 
 
 def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
-    result = ClassifierV2().run(state["messages"])
+    result = ClassifierV2().run(state["messages"][-1]['content'], state.get("need_clarification"), state.get('summary'))
 
     if result.get("need_clarification", True):
         assistant_message = [
-            {"role": "assistant", "content": result.get("clarification_question")}
+            assistant_msg(result.get("clarification_question"))
         ]
     else:
         assistant_message = []
 
     return {
-        "category": result["category"],
-        "category_confidence": result["confidence"],
-        "category_need_clarification": result["need_clarification"],
+        "category": result.get("category"),
+        "category_confidence": result.get("confidence"),
+        "category_need_clarification": result.get("need_clarification"),
         "messages": assistant_message,
         "trace": [
             {
