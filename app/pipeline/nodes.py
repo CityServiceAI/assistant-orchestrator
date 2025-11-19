@@ -1,84 +1,153 @@
 import logging
 
 from app.agents.category_classifier import CategoryClassifierAgent
+from app.agents.category_rules import pre_classification_rules
 from app.agents.classifier_v2 import ClassifierV2
-from app.agents.language_cleanup import LanguageCleanupAgent
 from app.agents.service_agent import ServiceAgent
 from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
+from app.data.rag import rag_search_categories
 
-language_agent = LanguageCleanupAgent()
 category_agent = CategoryClassifierAgent()
 
 
 def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
-    # ToDo only for role=user messages
-    user_input = state["messages"][-1]['content']
-    logging.info(f"User input {user_input}")
+    last_user_msg = next(
+        (m["content"] for m in reversed(state["messages"]) if m["role"] == "user"),
+        "",
+    )
+    logging.info(f"User input {last_user_msg}")
 
-    normalized_text, _truncated, warning_codes, safe = normalize_text(user_input)
+    normalized_text, _truncated, warning_codes, safe = normalize_text(last_user_msg)
+
+    base_issue_text = state.get("issue_text") or ""
+    need_clar_prev = state.get("category_need_clarification", False)
+
+    if not base_issue_text:
+        new_issue_text = normalized_text
+    elif need_clar_prev:
+        new_issue_text = f"{base_issue_text}. {normalized_text}"
+    else:
+        new_issue_text = base_issue_text
 
     return {
         "message": normalized_text,
-        "trace": [{
-            "node": "normalize_node",
-            "input_text": user_input,
-            "output_text": normalized_text,
-            "normalizer_safe": safe,
-            "normalizer_warnings": warning_codes
-        }]
-    }
-
-
-def language_cleanup_node(state: ConversationGraphState):
-    agent = LanguageCleanupAgent()
-    result = agent.run(state['message'])
-
-    return {
-        "message": result['assistant_response'],
-        "trace": [{
-            "agent": "language_cleanup",
-            "input_text": state['message'],
-            **result
-        }]
+        "issue_text": new_issue_text,
+        "trace": [
+            {
+                "node": "normalize_node",
+                "input_text": last_user_msg,
+                "output_text": normalized_text,
+                "normalizer_safe": safe,
+                "normalizer_warnings": warning_codes,
+            }
+        ],
     }
 
 
 def category_node(state: ConversationGraphState) -> ConversationGraphState:
     if "message" not in state:
-        raise Exception("No message in stage")
+        raise Exception("No message in state for category_node")
 
-    agent = CategoryClassifierAgent()
-    result = agent.run(state['messages'], state['message'])
-
-    if result.get("clarification_question") is not None:
-        assistant_message = [{"role": "assistant", "content": result["clarification_question"]}]
+    if state.get("issue_text"):
+        text = state["issue_text"]
     else:
-        assistant_message = []
+        text = state["message"]
+
+    logging.info(f"Category node. Input text: {text}")
+
+    rules_result = pre_classification_rules(text)
+
+    if rules_result is not None:
+        logging.info(f"Rules matched: {rules_result}")
+        result = {
+            "category": rules_result["category"],
+            "confidence": rules_result["confidence"],
+            "need_clarification": rules_result["need_clarification"],
+            "clarification_question": rules_result["clarification_question"],
+            "usage": None,
+            "model": "rules-engine",
+        }
+    else:
+        candidates = rag_search_categories(text, k=5)
+        logging.info(f"RAG candidates: {[c.l3_code for c in candidates]}")
+        result = category_agent.run(text=text, candidates=candidates)
+
+    clarification_question = result.get("clarification_question")
+    need_clarification = bool(result.get("need_clarification"))
+    prev_clar_cnt = state.get("clarification_count", 0)
+
+    new_messages: list[dict] = []
+    if need_clarification and clarification_question:
+        new_messages.append(
+            {
+                "role": "assistant",
+                "content": clarification_question,
+                "agent": "category_classifier",
+            }
+        )
+
+    prev_category = state.get("category")
+    prev_conf = state.get("category_confidence") or 0.0
+
+    new_category = result.get("category")
+    try:
+        new_conf = float(result.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        new_conf = 0.0
+
+    final_category = new_category
+    final_conf = new_conf
+
+    if prev_category is not None:
+        if new_category is not None and new_category != prev_category:
+            if new_conf <= prev_conf + 0.05:
+                logging.info(
+                    f"Keep previous category {prev_category} (prev_conf={prev_conf}) "
+                    f"over new {new_category} (new_conf={new_conf})"
+                )
+                final_category = prev_category
+                final_conf = prev_conf
+
+        if new_category is None:
+            logging.info(
+                f"New category is None, keep previous {prev_category} "
+                f"(prev_conf={prev_conf})"
+            )
+            final_category = prev_category
+            final_conf = prev_conf
 
     return {
-        "category": result["category"],
-        "category_confidence": result["confidence"],
-        "category_need_clarification": result["need_clarification"],
-        "messages": assistant_message,
-        "trace": [{
-            **result,
-            "agent": "category-classifier",
-            "input_text": state['message']
-        }]
+        "category": final_category,
+        "category_confidence": final_conf,
+        "category_need_clarification": need_clarification,
+        "clarification_count": prev_clar_cnt + 1
+        if need_clarification
+        else prev_clar_cnt,
+        "messages": new_messages,
+        "trace": [
+            {
+                **result,
+                "agent": "category-classifier",
+                "input_text": text,
+            }
+        ],
     }
 
 
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Search service node. State: {state}")
+    category_code = state.get("category")
 
-    result = ServiceAgent().run("H1.1.1")
+    result = ServiceAgent().run(category_code or "")
 
     return {
-        "trace": [{
-            **result,
-            "agent": "service"
-        }]
+        "trace": [
+            {
+                **result,
+                "agent": "service",
+            }
+        ]
     }
 
 
@@ -90,50 +159,73 @@ def ask_clarification_node(state: ConversationGraphState):
 def generate_appeal_node(state: ConversationGraphState):
     logging.info(f"Generate appeal node: State: {state}")
     return {
-        "messages": [{"role": "assistant", "content": "Ну що я можу сказати, беріть відро та черпайте"}]
+        "messages": [
+            {
+                "role": "assistant",
+                "content": "Дякуємо за звернення",
+            }
+        ]
     }
 
 
 def route_after_classification(state: ConversationGraphState):
     logging.info(f"Route after classification. State {state}")
 
-    if state.get("category_need_clarification", False):
-        if state.get("clarification_count", 0) > 10:
-            logging.info("Route to handle_failure")
-            return "handle_failure"
+    category = state.get("category")
+    confidence = state.get("category_confidence") or 0.0
+    need_clarification = state.get("category_need_clarification", False)
+    clarification_count = state.get("clarification_count", 0)
 
-        logging.info("Route to ask_clarification")
-        return "ask_clarification"
+    if isinstance(category, str) and category.startswith("Z."):
+        logging.info("Category is NOT_MUNICIPAL → handle_failure")
+        return "handle_failure"
 
-    logging.info("Route to service_search")
-    return "service_search"
+    if category is not None:
+        if need_clarification and clarification_count == 0 and confidence < 0.85:
+            logging.info(
+                "Have category but low/mid confidence and no clarifications yet → ask_clarification"
+            )
+            return "ask_clarification"
+
+        logging.info("Have category → service_search")
+        return "service_search"
+
+    if category is None:
+        if need_clarification and clarification_count < 2:
+            logging.info("No category yet, need clarification → ask_clarification")
+            return "ask_clarification"
+
+        logging.info("No category after clarifications → handle_failure")
+        return "handle_failure"
 
 
 def route_after_service_search(state: ConversationGraphState):
     logging.info(f"Route after search. State: {state}")
-
-    if state.get('category') == "YARD_TERRITORY":
-        return "generate_appeal"
-
-    return "handle_failure"
+    return "generate_appeal"
 
 
 def handle_failure_node(state: ConversationGraphState):
     return {
         "messages": [
-            {"role": "assistant",
-             "content": "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"},
-            {"role": "assistant",
-             'content': 'Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua'}
+            {
+                "role": "assistant",
+                "content": "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему",
+            },
+            {
+                "role": "assistant",
+                "content": "Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua",
+            },
         ]
     }
 
 
 def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
-    result = ClassifierV2().run(state['messages'])
+    result = ClassifierV2().run(state["messages"])
 
     if result.get("need_clarification", True):
-        assistant_message = [{"role": "assistant", "content": result.get("clarification_question")}]
+        assistant_message = [
+            {"role": "assistant", "content": result.get("clarification_question")}
+        ]
     else:
         assistant_message = []
 
@@ -142,9 +234,11 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         "category_confidence": result["confidence"],
         "category_need_clarification": result["need_clarification"],
         "messages": assistant_message,
-        "trace": [{
-            **result,
-            "agent": "category-classifier",
-            "input_text": state.get('message')
-        }]
+        "trace": [
+            {
+                **result,
+                "agent": "category-classifier",
+                "input_text": state.get("message"),
+            }
+        ],
     }

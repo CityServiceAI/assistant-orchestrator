@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 from app.pipeline.graph import build_complaint_graph
-from app.schemas.conversation import Conversation, ConversationContext, ConversationMessage
+from app.schemas.conversation import Conversation
 from app.pipeline.conversation_graph_state import ConversationGraphState
-from uuid import uuid4
+from app.storage import complaint_state_store as store
 
 router = APIRouter(prefix="/conversations", tags=["conversation"])
 
@@ -10,19 +10,16 @@ graph = build_complaint_graph()
 
 
 def message_as_json(message):
-    return {
-        "role": message["role"],
-        "content": message["content"]
-    }
+    return {"role": message["role"], "content": message["content"]}
 
 
 def as_model(state):
     return {
-        "id": "123",
-        "messages": list(map(lambda x: message_as_json(x), state["messages"])),
-        "trace": state['trace'],
+        "id": state.get("conversation_id", "123"),
+        "messages": [message_as_json(m) for m in state.get("messages", [])],
+        "trace": state.get("trace", []),
         "context": {
-            "issue_category": state["category"],
+            "issue_category": state.get("category"),
             "issue_address": "",
             "issue_category_level": "",
             "issuer_name": "",
@@ -30,14 +27,30 @@ def as_model(state):
             "service_provider_email": "",
             "service_provider_phones": None,
             "emergency": "",
-        }
+        },
     }
 
 
 @router.post("/", response_model=Conversation)
 async def conversation(body: Conversation) -> Conversation:
-    state = ConversationGraphState()
-    state['messages'] = list(map(lambda x: {"role": x.role, "content": x.content}, body.messages))
-    state = graph.invoke(state)
+    prev_state = store.get(body.id) or {}
 
-    return as_model(state)
+    incoming_messages = [
+        {
+            "role": m.role,
+            "content": m.content,
+            "agent": m.agent,
+        }
+        for m in body.messages
+    ]
+
+    state: ConversationGraphState = {
+        **prev_state,
+        "conversation_id": body.id,
+        "messages": incoming_messages,
+    }
+
+    state = graph.invoke(state)
+    store.set_(body.id, state)
+    payload = as_model(state)
+    return Conversation(**payload)

@@ -1,15 +1,12 @@
 from typing import Optional
 import operator
-import operator
-from typing import Optional
-
 from typing_extensions import Annotated, TypedDict
 
 
 class ConversationGraphState(TypedDict, total=False):
     messages: Annotated[list, operator.add]
-
-    #ToDo Не накращий спосіб, мені здається має бути кращі варіанти
+    issue_text: str
+    # ToDo Не накращий спосіб, мені здається має бути кращі варіанти
     message: str
     trace: Annotated[list, operator.add]
 

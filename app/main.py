@@ -1,24 +1,20 @@
 import logging
-
-from dotenv import load_dotenv
 from fastapi import FastAPI
-
-load_dotenv()
+from app.routers import routers
+from app.data.loader import init_categories
 
 # handler_ = [logging.FileHandler(LOG_FILE), logging.StreamHandler()]
 handler_ = [logging.StreamHandler()]
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
-    handlers=handler_
+    handlers=handler_,
 )
-
-from app.routers import routers
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="CityServiceAI Orchestrator")
-
+    init_categories("app/data/categories.csv")
     app.include_router(routers.router)
 
     return app
