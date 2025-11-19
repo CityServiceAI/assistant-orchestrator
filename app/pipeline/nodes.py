@@ -4,9 +4,9 @@ from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.category_rules import pre_classification_rules
 from app.agents.classifier_v2 import ClassifierV2
 from app.agents.service_agent import ServiceAgent
+from app.data.rag import rag_search_categories
 from app.pipeline.conversation_graph_state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
-from app.data.rag import rag_search_categories
 from app.tools.response import assistant_msg
 
 category_agent = CategoryClassifierAgent()
@@ -46,12 +46,19 @@ def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
     }
 
 
+def increase_clarification_count(state: ConversationGraphState, result):
+    if bool(result.get("need_clarification")):
+        return state.get("clarification_count", 0) + 1
+
+    return state.get("clarification_count")
+
+
 def category_node(state: ConversationGraphState) -> ConversationGraphState:
     if "message" not in state:
         raise Exception("No message in state for category_node")
 
-    if state.get("issue_text"):
-        text = state["issue_text"]
+    if state.get("summary") is not None and state.get("summary").get('normalized_description'):
+        text = state.get("summary").get('normalized_description') + " " + state["message"]
     else:
         text = state["message"]
 
@@ -72,35 +79,21 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
     else:
         candidates = rag_search_categories(text, k=5)
         logging.info(f"RAG candidates: {[c.l3_code for c in candidates]}")
-        result = category_agent.run(text=text, candidates=candidates)
 
-    clarification_question = result.get("clarification_question")
-    need_clarification = bool(result.get("need_clarification"))
-    prev_clar_cnt = state.get("clarification_count", 0)
-
-    new_messages: list[dict] = []
-    if need_clarification and clarification_question:
-        new_messages.append(
-            {
-                "role": "assistant",
-                "content": clarification_question,
-                "agent": "category_classifier",
-            }
+        result = category_agent.run(
+            text=text,
+            candidates=candidates,
+            is_clarification=state.get("category_need_clarification"),
+            previous_summary=state.get("summary")
         )
-
-    try:
-        new_conf = float(result.get("confidence", 0.0))
-    except (TypeError, ValueError):
-        new_conf = 0.0
 
     return {
         "category": result.get("category"),
-        "category_confidence": new_conf,
-        "category_need_clarification": need_clarification,
-        "clarification_count": prev_clar_cnt + 1
-        if need_clarification
-        else prev_clar_cnt,
-        "messages": new_messages,
+        "category_confidence": float(result.get("confidence", 0.0)),
+        "category_need_clarification": (bool(result.get("need_clarification"))),
+        "clarification_count": increase_clarification_count(state, result),
+        "messages": [get_clarification_message(result)] if get_clarification_message(result) else [],
+        "summary": result.get("summary"),
         "trace": [
             {
                 **result,
@@ -109,6 +102,13 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
             }
         ],
     }
+
+
+def get_clarification_message(result):
+    if result.get("need_clarification") and result.get("clarification_question"):
+        return assistant_msg(result.get("clarification_question"), "category_classifier")
+
+    return None
 
 
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:

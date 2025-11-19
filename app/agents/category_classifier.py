@@ -175,34 +175,39 @@ def build_system_prompt(candidates: List[CategoryRecord]) -> str:
 
 
 ------------------------------------------------
-6. ФОРМАТ ВІДПОВІДІ (ОБОВ'ЯЗКОВО)
+6. ОЧІКУВАНИЙ JSON ФОРМАТ (ОБОВ'ЯЗКОВО)
 ------------------------------------------------
-
-Відповідайте ТІЛЬКИ в такому JSON-форматі:
-
 {{
-  "category": "<L3 код з поля l3_code або null>",
-  "confidence": 0.xx,
-  "need_clarification": true/false,
-  "clarification_question": "..." або null
+  "category": рядок з поля l3_code зі списку вище або null (лише у крайніх випадках),
+  "confidence": число від 0.0 до 1.0,
+  "need_clarification": true або false,
+  "clarification_question": коротке запитання українською або null,
+  "summary": {{
+    "normalized_description": "string або null (очищений, стандартизований текст проблеми)",
+    "context_notes": string "або null (ключові деталі: локація (будинок/двір/вулиця), згадані ризики/терміни)"
+  }}
 }}
-
-ДЕ:
-- "category" — один з кодів l3_code зі списку вище або null (лише у випадках з п.2),
-- "confidence" — число від 0.0 до 1.0,
-- "need_clarification" — true або false,
-- "clarification_question" — коротке запитання українською або null.
-
-НЕ додавайте інших полів.
-НЕ додавайте текст поза JSON.
 """
 
 
 class CategoryClassifierAgent:
     name = "category_classifier"
 
-    def run(self, text: str, candidates: List[CategoryRecord]):
-        system_prompt = build_system_prompt(candidates)
+    def run(self, text: str, candidates: List[CategoryRecord], is_clarification, previous_summary):
+
+        if is_clarification and previous_summary is not None:
+            system_prompt = f"""
+            Продовжуйте аналіз скарги користувача. Враховуйте вже існуючий контекст проблеми:
+    
+            Опис проблеми: {previous_summary.get('normalized_description')}
+            Ключові деталі: {previous_summary('context_notes')}
+            
+            """
+            system_prompt += build_system_prompt(candidates)
+
+        else:
+            system_prompt = build_system_prompt(candidates)
+
 
         llm_request = [
             {"role": "system", "content": system_prompt},
@@ -256,6 +261,7 @@ class CategoryClassifierAgent:
             "confidence": confidence,
             "need_clarification": need_clarification,
             "clarification_question": clarification_question,
+            "summary": res_json.get("summary")
         }
 
         result = {
@@ -263,4 +269,5 @@ class CategoryClassifierAgent:
             "usage": response.usage.to_dict() if response.usage else None,
             "model": LLM_MODEL,
         }
+
         return result

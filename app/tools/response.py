@@ -36,8 +36,9 @@ def get_content_as_str(content):
     return content.strip() if content is not None else None
 
 
-def assistant_msg(content):
+def assistant_msg(content, agent=None):
     return {
         "role": "assistant",
         "content": content,
+        "agent": agent
     }
