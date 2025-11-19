@@ -9,6 +9,15 @@ class ConversationMessage(BaseModel):
     content: str
     agent: Optional[str] = None
 
+class ProblemDescriptor(BaseModel):
+    code: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    responsible_entity_type: Optional[str] = Field(None)
+    category_name: Optional[str] = Field(None)
+
+class ProblemSummary(BaseModel):
+    normalized_description: Optional[str] = Field(None)
+    context_notes: Optional[str] = Field(None)
 
 class ConversationContext(BaseModel):
     issue_category: Optional[str] = Field(None, example="WATER_SUPPLY")
@@ -28,8 +37,9 @@ class ConversationContext(BaseModel):
 class Conversation(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     context: Optional[ConversationContext] = None
-    messages: List[ConversationMessage]
-    trace: Optional[List[dict]] = Field(None)
+    messages: List[ConversationMessage] = Field([])
+    summary: Optional[ProblemSummary] = None
+    trace: Optional[List[dict]] = Field([])
 
     class Config:
         json_schema_extra = {
