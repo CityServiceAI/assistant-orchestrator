@@ -1,6 +1,7 @@
 import logging
 
 from app.agents.category_classifier import CategoryClassifierAgent
+from app.agents.classifier_v2 import ClassifierV2
 from app.agents.language_cleanup import LanguageCleanupAgent
 from app.agents.service_agent import ServiceAgent
 from app.pipeline.conversation_graph_state import ConversationGraphState
@@ -67,6 +68,7 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
         }]
     }
 
+
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Search service node. State: {state}")
 
@@ -79,9 +81,11 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
         }]
     }
 
+
 def ask_clarification_node(state: ConversationGraphState):
     logging.info("Ask clarification node.")
-    return state
+    return {}
+
 
 def generate_appeal_node(state: ConversationGraphState):
     logging.info(f"Generate appeal node: State: {state}")
@@ -92,12 +96,9 @@ def generate_appeal_node(state: ConversationGraphState):
 
 def route_after_classification(state: ConversationGraphState):
     logging.info(f"Route after classification. State {state}")
-    category = state.get("category")
-    category_confidence = state.get("category_confidence")
-    clarification_count = state.get("clarification_count", 0)
 
-    if category is None and category_confidence < 90 :
-        if clarification_count > 10:
+    if state.get("category_need_clarification", False):
+        if state.get("clarification_count", 0) > 10:
             logging.info("Route to handle_failure")
             return "handle_failure"
 
@@ -120,7 +121,30 @@ def route_after_service_search(state: ConversationGraphState):
 def handle_failure_node(state: ConversationGraphState):
     return {
         "messages": [
-            {"role": "assistant", "content": "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"},
-            {"role": "assistant", 'content': 'Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua'}
+            {"role": "assistant",
+             "content": "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"},
+            {"role": "assistant",
+             'content': 'Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua'}
         ]
+    }
+
+
+def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
+    result = ClassifierV2().run(state['messages'])
+
+    if result.get("need_clarification", True):
+        assistant_message = [{"role": "assistant", "content": result.get("clarification_question")}]
+    else:
+        assistant_message = []
+
+    return {
+        "category": result["category"],
+        "category_confidence": result["confidence"],
+        "category_need_clarification": result["need_clarification"],
+        "messages": assistant_message,
+        "trace": [{
+            **result,
+            "agent": "category-classifier",
+            "input_text": state.get('message')
+        }]
     }

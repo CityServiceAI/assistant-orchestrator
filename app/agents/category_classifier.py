@@ -1,8 +1,9 @@
 import json
-import re
-from enum import Enum
 import logging
+from enum import Enum
+
 from app.deps.litellm_client import client
+from app.tools.response import get_content_as_json, get_content_as_str
 
 LLM_MODEL = "gpt-4.1-mini"
 
@@ -106,7 +107,7 @@ class CategoryClassifierAgent:
         Вихід: CategoryDetectionResult з полями category/confidence/need_clarification/clarification_question.
         """
 
-        llm_request  = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}]
+        llm_request = [{"role": "system", "content": SYSTEM_CATEGORY_PROMPT}]
         llm_request += messages
         llm_request += [{"role": "user", "content": next_message}]
 
@@ -117,22 +118,10 @@ class CategoryClassifierAgent:
             max_tokens=200,
             response_format={"type": "json_object"}
         )
-        content = response.choices[0].message.content
-
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                text_part = getattr(part, "text", None)
-                if isinstance(text_part, str):
-                    parts.append(text_part)
-                elif isinstance(part, dict):
-                    t = part.get("text")
-                    if isinstance(t, str):
-                        parts.append(t)
-            content = "".join(parts)
+        content = get_content_as_str(response.choices[0].message.content)
 
         logging.info(f"Category agent response {response.model_dump_json(indent=2)}")
-        res_json = self.get_content_as_json(content)
+        res_json = get_content_as_json(content)
         logging.info(f"Category agent, extracted response {res_json}")
 
         result = {
@@ -143,21 +132,3 @@ class CategoryClassifierAgent:
 
         logging.info(f"Category agent, response {result}")
         return result
-
-    @staticmethod
-    def get_content_as_json(raw_content):
-        logging.info(f"String to json convertor, raw content: {raw_content}")
-        match = re.search(r"```json\n([\s\S]*?)\n```", raw_content)
-
-        if match:
-            json_string = match.group(1)
-            try:
-                return json.loads(json_string)
-            except json.JSONDecodeError as e:
-                print(f"Помилка декодування JSON: {e}")
-                return None
-        else:
-            try:
-                return json.loads(raw_content)
-            except ValueError as e:
-                return None

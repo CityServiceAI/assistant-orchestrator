@@ -10,7 +10,8 @@ from app.pipeline.nodes import (
     route_after_classification,
     route_after_service_search,
     handle_failure_node,
-    generate_appeal_node
+    generate_appeal_node, classifier_node
+
 )
 
 
@@ -18,8 +19,9 @@ def build_complaint_graph():
     graph = StateGraph(ConversationGraphState)
 
     graph.add_node("normalize", normalize_node)
-    graph.add_node("language_cleanup", language_cleanup_node)
+    # graph.add_node("language_cleanup", language_cleanup_node)
     graph.add_node("category", category_node)
+    # graph.add_node("category", classifier_node)
     graph.add_node("service_search", search_service_node)
     graph.add_node("ask_clarification", ask_clarification_node)
     graph.add_node("handle_failure", handle_failure_node)
@@ -27,9 +29,8 @@ def build_complaint_graph():
     #
     graph.set_entry_point("normalize")
 
-    graph.add_edge("normalize", "language_cleanup")
-    graph.add_edge("language_cleanup", "category")
-    graph.add_edge("category", "service_search")
+    graph.add_edge("normalize", "category")
+    # graph.add_edge("category", "service_search")
 
     graph.add_conditional_edges(
         "category",

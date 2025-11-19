@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
 from app.deps.litellm_client import client
+from app.tools.response import get_content_as_str
 
 SYSTEM_LANGUAGE_CLEANUP_PROMPT = """
 Ви — редактор офіційних звернень до міських служб.
@@ -36,26 +37,9 @@ class LanguageCleanupAgent:
             temperature=0.0,
             max_tokens=220,
         )
-        msg = response.choices[0].message
-        content = msg.content
-
-        if isinstance(content, list):
-            parts: list[str] = []
-            for part in content:
-                text_part = getattr(part, "text", None)
-                if isinstance(text_part, str):
-                    parts.append(text_part)
-                elif isinstance(part, dict):
-                    t = part.get("text")
-                    if isinstance(t, str):
-                        parts.append(t)
-            content = "".join(parts)
-
-        if content is None:
-            content = ""
 
         return {
-            "assistant_response": content.strip(),
+            "assistant_response": get_content_as_str(response.choices[0].message.content),
             "model": LLM_MODEL,
             "usage": response.usage
         }
