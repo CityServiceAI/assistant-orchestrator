@@ -88,39 +88,14 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
             }
         )
 
-    prev_category = state.get("category")
-    prev_conf = state.get("category_confidence") or 0.0
-
-    new_category = result.get("category")
     try:
         new_conf = float(result.get("confidence", 0.0))
     except (TypeError, ValueError):
         new_conf = 0.0
 
-    final_category = new_category
-    final_conf = new_conf
-
-    if prev_category is not None:
-        if new_category is not None and new_category != prev_category:
-            if new_conf <= prev_conf + 0.05:
-                logging.info(
-                    f"Keep previous category {prev_category} (prev_conf={prev_conf}) "
-                    f"over new {new_category} (new_conf={new_conf})"
-                )
-                final_category = prev_category
-                final_conf = prev_conf
-
-        if new_category is None:
-            logging.info(
-                f"New category is None, keep previous {prev_category} "
-                f"(prev_conf={prev_conf})"
-            )
-            final_category = prev_category
-            final_conf = prev_conf
-
     return {
-        "category": final_category,
-        "category_confidence": final_conf,
+        "category": result.get("category"),
+        "category_confidence": new_conf,
         "category_need_clarification": need_clarification,
         "clarification_count": prev_clar_cnt + 1
         if need_clarification
@@ -173,26 +148,34 @@ def route_after_classification(state: ConversationGraphState):
     clarification_count = state.get("clarification_count", 0)
 
     if isinstance(category, str) and category.startswith("Z."):
-        logging.info("Category is NOT_MUNICIPAL → handle_failure")
-        return "handle_failure"
-
-    if category is not None:
-        if need_clarification and clarification_count == 0 and confidence < 0.85:
+        if confidence >= 0.9:
             logging.info(
-                "Have category but low/mid confidence and no clarifications yet → ask_clarification"
+                "Category is NOT_MUNICIPAL with high confidence → handle_failure"
             )
-            return "ask_clarification"
+            return "handle_failure"
 
-        logging.info("Have category → service_search")
-        return "service_search"
+        if need_clarification:
+            logging.info("NOT_MUNICIPAL but low confidence → ask_clarification")
+            return "ask_clarification"
+        logging.info("NOT_MUNICIPAL low confidence w/o clarification → handle_failure")
+        return "handle_failure"
 
     if category is None:
-        if need_clarification and clarification_count < 2:
-            logging.info("No category yet, need clarification → ask_clarification")
+        if need_clarification:
+            logging.info("No category, need clarification → ask_clarification")
             return "ask_clarification"
-
-        logging.info("No category after clarifications → handle_failure")
+        logging.info("No category and no clarification → handle_failure")
         return "handle_failure"
+
+    if confidence >= 0.9:
+        logging.info("Have category with high confidence ≥ 0.9 → service_search")
+        return "service_search"
+
+    logging.info(
+        f"Have category={category} but confidence={confidence} < 0.9 → ask_clarification "
+        f"(clarification_count={clarification_count})"
+    )
+    return "ask_clarification"
 
 
 def route_after_service_search(state: ConversationGraphState):
