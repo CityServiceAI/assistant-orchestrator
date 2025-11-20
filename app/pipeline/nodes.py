@@ -22,7 +22,7 @@ def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
     normalized_text, _truncated, warning_codes, safe = normalize_text(last_user_msg)
 
     base_issue_text = state.get("issue_text") or ""
-    need_clar_prev = state.get("category_need_clarification", False)
+    need_clar_prev = state.get("need_clarification", False)
 
     if not base_issue_text:
         new_issue_text = normalized_text
@@ -83,14 +83,14 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
         result = category_agent.run(
             text=text,
             candidates=candidates,
-            is_clarification=state.get("category_need_clarification"),
+            is_clarification=state.get("need_clarification"),
             previous_summary=state.get("summary")
         )
 
     return {
         "category": result.get("category"),
         "category_confidence": float(result.get("confidence", 0.0)),
-        "category_need_clarification": (bool(result.get("need_clarification"))),
+        "need_clarification": (bool(result.get("need_clarification"))),
         "clarification_count": increase_clarification_count(state, result),
         "messages": [get_clarification_message(result)] if get_clarification_message(result) else [],
         "summary": result.get("summary"),
@@ -113,11 +113,12 @@ def get_clarification_message(result):
 
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Search service node. State: {state}")
-    category_code = state.get("category")
 
-    result = ServiceAgent().run(category_code or "")
+    result = ServiceAgent().run(state)
 
+    problem = state.get("problem")
     return {
+        "messages": [assistant_msg(f'Ваша проблема {problem.get("code")}: {problem.get("description")}, {problem.get("category_name")}')],
         "trace": [
             {
                 **result,
@@ -143,8 +144,8 @@ def route_after_classification(state: ConversationGraphState):
     logging.info(f"Route after classification. State {state}")
 
     category = state.get("category")
-    confidence = state.get("category_confidence") or 0.0
-    need_clarification = state.get("category_need_clarification", False)
+    confidence = state.get("category_confidence", 0)
+    need_clarification = state.get("need_clarification", False)
     clarification_count = state.get("clarification_count", 0)
 
     if isinstance(category, str) and category.startswith("Z."):
@@ -193,7 +194,12 @@ def handle_failure_node(state: ConversationGraphState):
 
 
 def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
-    result = ClassifierV2().run(state["messages"][-1]['content'], state.get("need_clarification"), state.get('summary'))
+    logging.info(f"Classifier node: request {state}")
+    result = ClassifierV2().run(
+        state["messages"][-1]['content'],
+        state.get("need_clarification"),
+        state.get('summary')
+    )
 
     if result.get("need_clarification", True):
         assistant_message = [
@@ -203,9 +209,10 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         assistant_message = []
 
     return {
-        "category": result.get("category"),
-        "category_confidence": result.get("confidence"),
-        "category_need_clarification": result.get("need_clarification"),
+        **result,
+        "category": result.get("problem").get("code"),
+        "category_confidence": result.get("confidence", 0),
+
         "messages": assistant_message,
         "trace": [
             {

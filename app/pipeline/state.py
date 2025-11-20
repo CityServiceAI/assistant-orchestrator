@@ -27,7 +27,7 @@ class ConversationGraphState(TypedDict, total=False):
     conversation_id: str
     category: Optional[str]
     category_confidence: Optional[float]
-    category_need_clarification: bool
+    need_clarification: bool
     clarification_count: Optional[int]
     problem: Optional[ProblemDescriptor]
     summary: Optional[ProblemSummary]

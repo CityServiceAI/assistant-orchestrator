@@ -40,6 +40,7 @@ class Conversation(BaseModel):
     messages: List[ConversationMessage] = Field([])
     summary: Optional[ProblemSummary] = None
     trace: Optional[List[dict]] = Field([])
+    need_clarification: Optional[bool] = Field(False)
 
     class Config:
         json_schema_extra = {
