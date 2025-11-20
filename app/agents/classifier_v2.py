@@ -48,40 +48,34 @@ O.1.1: Несанкціонована реклама / графіті на бу�
 O.1.2: Проблема з вентиляцією / якістю повітря (ManagementCompany/OSBB) | Управління багатоквартирним будинком
 
 Правила маршрутизації:
-1.  **Out-of-Scope:** Якщо запит не стосується проблем зі списку, встановіть `is_out_of_scope: true`, а блок "problem" залиште як `null`. `confidence` та `emergency_score` повинні бути 1.0.
-2.  **Clarification:** Якщо проблема комунальна, але недостатньо деталей для класифікації/локації, встановіть `need_clarification: true`. `confidence` має бути високим (0.9-1.0).
-3.  **Success:** Якщо запит чіткий, встановіть `need_clarification: false`. Заповніть усі поля в блоці "problem".
+1.  **Out-of-Scope:** Якщо запит не стосується проблем зі списку, встановіть `is_out_of_scope: true`, а блок "problem" залиште як `null`. `confidence` = 1.0, `emergency_score` = 0.0.
+2.  **Clarification (Потрібно більше деталей):** Якщо проблема комунальна, але недостатньо деталей для класифікації (наприклад, незрозуміло, це холодна чи гаряча вода, або незрозуміла локація), встановіть `need_clarification: true` і згенеруйте уточнення *про проблему* в `clarification_question`. Блок "problem" залиште як `null`.
+3.  **Success:** Якщо запит чіткий, встановіть `need_clarification: false`. Заповніть усі поля в блоці "problem". Заповніть поле confidence числом від 0.5 до 1.0.
 
 **Правило оцінки екстреності (emergency_score):**
-Заповніть `emergency_score` числом від **0.0** (не екстрено) до **1.0** (максимально екстрено).
+Заповніть `emergency_score` числом від **0.0** (не екстрено) до **1.0** (максимально екстрено), використовуючи наступні критерії:
 *   *1.0 (Критично):* Запах газу, пожежа, загроза життю, обрив електропроводів, сильне затоплення майна.
 *   *0.5 (Середня терміновість):* Немає води/світла/тепла (але без прямої загрози), яма на дорозі, повалене дерево без жертв.
 *   *0.1 (Низький пріоритет):* Не горить лампочка в під'їзді, не вивозять сміття, розбите вікно.
 
-**УВАГА:** Блоки "summary" та "location_details" є **обов'язковими** і повинні бути заповнені у всіх випадках.
+**УВАГА:** Блок "summary" є **обов'язковим** і повинен бути заповнений у всіх випадках.
 
 ОЧІКУВАНИЙ JSON ФОРМАТ:
 {
-  "confidence": "number (float від 0.0 до 1.0)",
+  "confidence": "number (float від 0.0 до 1.0, в корені об'єкта)",
   "emergency_score": "number (float від 0.0 до 1.0, 1.0 - максимальна загроза)",
   "need_clarification": "boolean",
   "clarification_question": "string або null",
   "is_out_of_scope": "boolean",
   "problem": {
     "code": "string або null",
-    "description": "string або null",
+    "description": "string або null (опис проблеми з класифікатора)",
     "responsible_entity_type": "string або null",
     "category_name": "string або null"
-  } ,
-  "location_details": {
-    "city": "string або null (ОПЦІОНАЛЬНО)",
-    "street": "string або null (ОПЦІОНАЛЬНО)",
-    "building_number": "string або null (ОПЦІОНАЛЬНО)",
-    "apartment": "string або null (ОПЦІОНАЛЬНО)"
   },
   "summary": {
-    "normalized_description": "string",
-    "context_notes": "string"
+    "normalized_description": "string (очищений, стандартизований текст проблеми/запиту)",
+    "context_notes": "string (ключові деталі: ризики/терміни, або причина out-of-scope/уточнення)"
   }
 }
 """

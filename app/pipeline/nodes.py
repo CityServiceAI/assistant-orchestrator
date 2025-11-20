@@ -4,6 +4,7 @@ from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.category_rules import pre_classification_rules
 from app.agents.classifier_v2 import ClassifierV2
 from app.agents.service_agent import ServiceAgent
+from app.agents.location_agent import LocationAgent
 from app.data.rag import rag_search_categories
 from app.pipeline.state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
@@ -175,15 +176,8 @@ def route_after_classification(state: ConversationGraphState):
         logging.info("No category and no clarification → handle_failure")
         return "handle_failure"
 
-    if confidence >= 0.9:
-        logging.info("Have category with high confidence ≥ 0.9 → service_search")
-        return "service_search"
-
-    logging.info(
-        f"Have category={category} but confidence={confidence} < 0.9 → ask_clarification "
-        f"(clarification_count={clarification_count})"
-    )
-    return "ask_clarification"
+    logging.info("Redirect to location")
+    return "location"
 
 
 def route_after_service_search(state: ConversationGraphState):
@@ -302,3 +296,29 @@ def get_problem_code(problem):
         return problem.get("code")
 
     return None
+
+def location(state: ConversationGraphState) -> ConversationGraphState:
+
+    result = LocationAgent().run(state.get('summary'), state["messages"][-1]['content'])
+
+    if result.get("need_clarification", False):
+        assistant_messages = [
+            assistant_msg(result.get("clarification_question"))
+        ]
+    else:
+        assistant_messages = []
+
+    return {
+        **result,
+        "messages": assistant_messages,
+        "trace": [{
+            **result
+        }]
+    }
+
+def route_after_location(state: ConversationGraphState):
+
+    if state.get("need_clarification"):
+        return "ask_clarification"
+
+    return "service_search"

@@ -11,7 +11,7 @@ from app.pipeline.nodes import (
     route_after_service_search,
     handle_failure_node,
     generate_appeal_node,
-    classifier_node, emergency_node
+    classifier_node, emergency_node, location, route_after_location
 )
 
 
@@ -25,6 +25,7 @@ def build_complaint_graph():
     graph.add_node("handle_failure", handle_failure_node)
     graph.add_node("generate_appeal", generate_appeal_node)
     graph.add_node("emergency", emergency_node)
+    graph.add_node("location", location)
 
     graph.set_entry_point("normalize")
 
@@ -36,15 +37,28 @@ def build_complaint_graph():
         {
             "handle_failure": "handle_failure",
             "ask_clarification": "ask_clarification",
-            "service_search": "service_search",
+            "location": "location",
             "emergency": "emergency"
         },
     )
 
     graph.add_conditional_edges(
+        "location",
+        route_after_location,
+        {
+            "service_search": "service_search",
+            "ask_clarification": "ask_clarification",
+            "handle_failure": "handle_failure",
+        }
+    )
+
+    graph.add_conditional_edges(
         "service_search",
         route_after_service_search,
-        {"handle_failure": "handle_failure", "generate_appeal": "generate_appeal"},
+        {
+            "handle_failure": "handle_failure",
+            "generate_appeal": "generate_appeal"
+        },
     )
 
     graph.add_edge("ask_clarification", END)
