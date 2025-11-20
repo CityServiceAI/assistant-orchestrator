@@ -1,7 +1,14 @@
 import logging
 from fastapi import FastAPI
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from app.routers import routers
 from app.data.loader import init_categories
+
+CATEGORIES_DATA_FILE = os.getenv("CATEGORIES_DATA_FILE", "app/data/categories.csv")
 
 # handler_ = [logging.FileHandler(LOG_FILE), logging.StreamHandler()]
 handler_ = [logging.StreamHandler()]
@@ -13,11 +20,11 @@ logging.basicConfig(
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="CityServiceAI Orchestrator")
-    init_categories("app/data/categories.csv")
-    app.include_router(routers.router)
+    init_categories(CATEGORIES_DATA_FILE)
 
-    return app
+    result = FastAPI(title="CityServiceAI Orchestrator")
+    result.include_router(routers.router)
+    return result
 
 
 app = create_app()

@@ -9,7 +9,7 @@ EMBEDDING_MODEL = "codemie-text-embedding-ada-002"
 CATEGORIES: List[CategoryRecord] = []
 
 
-def load_categories(path: str = "app/data/categories.csv") -> List[CategoryRecord]:
+def load_categories(path: str) -> List[CategoryRecord]:
     fp = Path(path)
     if not fp.exists():
         raise FileNotFoundError(f"CSV file not found: {fp}")
@@ -62,7 +62,11 @@ def load_categories(path: str = "app/data/categories.csv") -> List[CategoryRecor
     return records
 
 
-def init_categories(path: str = "app/data/categories.csv") -> None:
+def init_categories(path: str) -> None:
+
+    if not path:
+        raise ValueError("Missing required parameter: 'path'")
+
     """
     Викликаємо один раз при старті (в main.py).
     Вантажимо всі категорії й рахуємо для них embeddings.

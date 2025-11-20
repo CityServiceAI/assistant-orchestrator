@@ -1,8 +1,5 @@
 from openai import AzureOpenAI
-from dotenv import load_dotenv
 import os
-
-load_dotenv()
 
 LLM_PROXY_SERVICE_API_URL = os.getenv("LLM_PROXY_SERVICE_API_URL")
 LLM_PROXY_SERVICE_API_KEY = os.getenv("LLM_PROXY_SERVICE_API_KEY")
