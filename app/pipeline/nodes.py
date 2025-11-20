@@ -88,12 +88,11 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
         )
 
     return {
+        **result,
         "category": result.get("category"),
         "category_confidence": float(result.get("confidence", 0.0)),
-        "need_clarification": (bool(result.get("need_clarification"))),
         "clarification_count": increase_clarification_count(state, result),
         "messages": [get_clarification_message(result)] if get_clarification_message(result) else [],
-        "summary": result.get("summary"),
         "trace": [
             {
                 **result,
@@ -148,16 +147,16 @@ def route_after_classification(state: ConversationGraphState):
     confidence = state.get("category_confidence", 0)
     need_clarification = state.get("need_clarification", False)
     clarification_count = state.get("clarification_count", 0)
-    is_emergency = state.get("is_emergency", False)
+    emergency_score = state.get("emergency_score", 0)
 
-    if is_emergency and need_clarification:
+    if emergency_score > 0 and need_clarification:
         return "ask_clarification"
 
-    if is_emergency and not need_clarification:
+    if emergency_score >= 0.9 and not need_clarification:
         return "emergency"
 
     if isinstance(category, str) and category.startswith("Z."):
-        if confidence >= 0.9:
+        if confidence >= 0.8:
             logging.info(
                 "Category is NOT_MUNICIPAL with high confidence → handle_failure"
             )
