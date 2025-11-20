@@ -5,7 +5,7 @@ from app.agents.category_rules import pre_classification_rules
 from app.agents.classifier_v2 import ClassifierV2
 from app.agents.service_agent import ServiceAgent
 from app.data.rag import rag_search_categories
-from app.pipeline.conversation_graph_state import ConversationGraphState
+from app.pipeline.state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
 from app.tools.response import assistant_msg
 

@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, END
 
-from app.pipeline.conversation_graph_state import ConversationGraphState
+from app.pipeline.state import ConversationGraphState
+
 from app.pipeline.nodes import (
     normalize_node,
     category_node,

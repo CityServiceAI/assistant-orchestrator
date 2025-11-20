@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.pipeline.graph import build_complaint_graph
 from app.schemas.conversation import Conversation, ConversationContext, ConversationMessage
-from app.pipeline.conversation_graph_state import ConversationGraphState
+from app.pipeline.state import ConversationGraphState
 from uuid import uuid4
 
 router = APIRouter(prefix="/conversations", tags=["conversation"])
