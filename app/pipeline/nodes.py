@@ -118,7 +118,8 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
 
     problem = state.get("problem")
     return {
-        "messages": [assistant_msg(f'Ваша проблема {problem.get("code")}: {problem.get("description")}, {problem.get("category_name")}')],
+        "messages": [assistant_msg(
+            f'Ваша проблема {problem.get("code")}: {problem.get("description")}, {problem.get("category_name")}')],
         "trace": [
             {
                 **result,
@@ -147,6 +148,13 @@ def route_after_classification(state: ConversationGraphState):
     confidence = state.get("category_confidence", 0)
     need_clarification = state.get("need_clarification", False)
     clarification_count = state.get("clarification_count", 0)
+    is_emergency = state.get("is_emergency", False)
+
+    if is_emergency and need_clarification:
+        return "ask_clarification"
+
+    if is_emergency and not need_clarification:
+        return "emergency"
 
     if isinstance(category, str) and category.startswith("Z."):
         if confidence >= 0.9:
@@ -188,7 +196,8 @@ def handle_failure_node(state: ConversationGraphState):
     return {
         "messages": [
             assistant_msg("Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"),
-            assistant_msg("Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua")
+            assistant_msg(
+                "Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua")
         ]
     }
 
@@ -210,7 +219,7 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
 
     return {
         **result,
-        "category": result.get("problem").get("code"),
+        "category": get_problem_code(result.get("problem")),
         "category_confidence": result.get("confidence", 0),
 
         "messages": assistant_message,
@@ -222,3 +231,75 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
             }
         ],
     }
+
+
+def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
+    logging.info(f"Emergency node: request {state}")
+
+    responsible_entity_type = state.get("problem", {}).get("responsible_entity_type")
+    logging.info(f"Responsible entity type:  {responsible_entity_type}")
+
+    match responsible_entity_type:
+        case "MunicipalUtility_GasService":
+            message = """
+            ❗️ УВАГА: Загроза вибуху!
+            Ми зафіксували вашу скаргу про запах газу. 
+            Будь ласка, негайно виконайте наступні дії:
+            - Перекрийте вентилі на газових приладах та на вході в квартиру/будинок.
+            - Відчиніть вікна для провітрювання.
+            - Не вмикайте/не вимикайте світло та будь-які електроприлади!
+            - Негайно зателефонуйте до аварійної служби газу за номером 104 (з мобільного чи стаціонарного телефону).
+            - Залиште небезпечне приміщення.
+            """
+            return {
+                "messages": [assistant_msg(message)],
+            }
+        case 'MunicipalUtility_Electricity':
+            message = """
+            ❗️ УВАГА: Небезпека ураження струмом!
+            Ми зафіксували вашу скаргу про обрив електропроводів/іскріння. Це вкрай небезпечно!
+            Не наближайтесь до місця обриву ближче ніж на 8 метрів.
+            Не торкайтесь проводів.
+            Аварійна служба РЕМ (Район електричних мереж) вже повідомлена і прямує на місце події. Будьте обережні.
+            """
+            return {
+                "messages": [assistant_msg(message)],
+            }
+        case 'MunicipalUtility_Water':
+            message = """
+            ❗️ УВАГА: Аварія на зовнішніх мережах водопостачання!
+            Ми отримали ваше повідомлення про витік води (прорив труби / гідранта) на вулиці. Цю скаргу класифіковано як екстрену аварію.
+            Бригада аварійно-відновлювальних робіт Вже прямує на місце події для локалізації та усунення витоку.
+            Ваші дії:
+            Будь ласка, тримайтеся на безпечній відстані від місця прориву.
+            Не намагайтеся самостійно перекрити гідрант або трубу.
+            Якщо поруч є відкриті електропроводи, попередьте перехожих про небезпеку.
+            """
+            return {
+                "messages": [assistant_msg(message)],
+            }
+        case 'MunicipalUtility_GreeneryService':
+            message = """
+            ❗️ УВАГА: Загроза безпеці!
+            Дякуємо за повідомлення про повалене дерево, яке загрожує життю/майну. Ми класифікували це як екстрену ситуацію.
+            Будь ласка, тримайтеся на безпечній відстані від небезпечного місця.
+            Чергова бригада відповідної комунальної служби вже отримала заявку.
+            """
+            return {
+                "messages": [assistant_msg(message)],
+            }
+        case _:  # Default case (wildcard)\
+            message = """
+            ❗️ УВАГА: Загроза безпеці!
+            Зверніться за номером 112
+            """
+            return {
+                "messages": [assistant_msg(message)],
+            }
+
+
+def get_problem_code(problem):
+    if problem is not None:
+        return problem.get("code")
+
+    return None

@@ -43,13 +43,19 @@ N.1.1: Сильний шум у нічний час (від сусідів/за�
 D.1.1: Пошкодження фасаду будівлі (ManagementCompany/OSBB) | Управління багатоквартирним будинком
 W.1.1: Витік води з пожежного гідранта / колонки (MunicipalUtility_Water) | Централізоване водопостачання
 W.1.2: Відсутність питної води в бюветі (MunicipalUtility_Water) | Централізоване водопостачання
+W.1.3: Прорив/аварія магістральної труби водопостачання (НА ВУЛИЦІ) (MunicipalUtility_Water) | Централізоване водопостачання (аварія)
 O.1.1: Несанкціонована реклама / графіті на будівлі (ManagementCompany/OSBB) | Управління багатоквартирним будинком
 O.1.2: Проблема з вентиляцією / якістю повітря (ManagementCompany/OSBB) | Управління багатоквартирним будинком
 
 Правила маршрутизації:
-1.  **Out-of-Scope:** Якщо запит не стосується проблем зі списку, встановите `is_out_of_scope: true`, а всі інші поля (включаючи блоки "problem" та "summary") залиште як `null`. Поле `confidence` повинно бути 1.0.
-2.  **Clarification (Проблема нечітка):** Якщо проблема комунальна, але занадто нечітка для класифікації, встановіть `need_clarification: true` і згенеруйте уточнення *про проблему* в `clarification_question`. Блоки "problem" та "summary" залиште як `null`. Поле `confidence` повинно відображати впевненість в тому, що потрібне уточнення (наприклад, 0.9-1.0).
-3.  **Success:** Якщо запит чіткий, встановіть `need_clarification: false`. Заповніть усі поля в блоках "problem" та "summary", а також спробуйте витягти адресу в "location_details". **Заповніть поле confidence числом від 0.5 до 1.0, де 1.0 означає повну впевненість у класифікації.**
+1.  **Out-of-Scope:** Якщо запит не стосується проблем зі списку, встановіть `is_out_of_scope: true`, а блок "problem" залиште як `null`. Поле `confidence` повинно бути 1.0.
+2.  **Clarification (Потрібна локація):** Якщо проблема комунальна, але **користувач не вказав достатньо деталей для визначення точного місця** (наприклад, незрозуміло, це квартира, під'їзд, двір чи вулиця), встановіть `need_clarification: true` і згенеруйте уточнення *про місцезнаходження* в `clarification_question`. Блок "problem" залиште як `null`. Поле `confidence` має відображати впевненість в тому, що потрібне уточнення.
+3.  **Success:** Якщо запит чіткий (входить до класифікатора) та містить достатню інформацію про місцезнаходження, встановіть `need_clarification: false`. Заповніть усі поля в блоці "problem" та спробуйте витягти адресу в "location_details". **Заповніть поле confidence числом від 0.5 до 1.0.**
+
+**Правило екстреної ситуації:**
+Встановіть `is_emergency: true`, якщо скарга описує безпосередню загрозу життю, здоров'ю або майну.
+
+**УВАГА:** Блоки "summary" та "location_details" є **обов'язковими** і повинні бути заповнені у всіх випадках (Out-of-Scope, Clarification, Success) з максимальною кількістю витягнутої інформації.
 
 ОЧІКУВАНИЙ JSON ФОРМАТ:
 {
@@ -57,11 +63,12 @@ O.1.2: Проблема з вентиляцією / якістю повітря 
   "need_clarification": "boolean",
   "clarification_question": "string або null",
   "is_out_of_scope": "boolean",
+  "is_emergency": "boolean",
   "problem": {
     "code": "string або null",
     "description": "string або null (опис проблеми з класифікатора)",
     "responsible_entity_type": "string або null",
-    "category_name": "string або null (наприклад, 'Постачання електричної енергії')"
+    "category_name": "string або null"
   } ,
   "location_details": {
     "city": "string або null (ОПЦІОНАЛЬНО)",
@@ -70,8 +77,8 @@ O.1.2: Проблема з вентиляцією / якістю повітря 
     "apartment": "string або null (ОПЦІОНАЛЬНО)"
   },
   "summary": {
-    "normalized_description": "string (очищений, стандартизований текст проблеми, ОБОВ'ЯЗКОВО)",
-    "context_notes": "string (ключові деталі: локація, ризики/терміни, ОБОВ'ЯЗКОВО)"
+    "normalized_description": "string (очищений, стандартизований текст проблеми/запиту)",
+    "context_notes": "string (ключові деталі: локація, ризики/терміни, або причина out-of-scope/уточнення)"
   }
 }
 """
@@ -80,20 +87,21 @@ class ClassifierV2:
 
     def run(self, user_message, is_clarification: bool, previous_summary):
 
+        system_prompt = CLASSIFIER_PROMPT
+
         if is_clarification and previous_summary is not None:
-            system_prompt = f"""
-            Продовжуйте аналіз скарги користувача. Враховуйте вже існуючий контекст проблеми:
-    
-            Опис проблеми: {previous_summary.get('normalized_description', '')}
-            Ключові деталі: {previous_summary.get('context_notes', '')}
+            system_prompt += f"""
+            # ДОДАТКОВІ ІНСТРУКЦІЇ ДЛЯ УТОЧНЕННЯ:
+            Це продовження діалогу. Використовуйте наданий нижче КОНТЕКСТ ДІАЛОГУ та ОСТАННЄ ПОВІДОМЛЕННЯ КОРИСТУВАЧА, щоб оновити ВСЮ JSON-структуру.
             
+            Зокрема:
+            - Оновіть "summary", об'єднавши стару та нову інформацію.
+            - Якщо відповідь користувача містить достатньо даних для класифікації (наприклад, тепер відомо, холодна чи гаряча вода), оновіть блок "problem" та встановіть need_clarification: false.
+            
+            --- ПОЧАТОК КОНТЕКСТУ ---
+            {previous_summary}
+            --- КІНЕЦЬ КОНТЕКСТУ ---
             """
-
-            system_prompt += CLASSIFIER_PROMPT
-
-        else:
-            system_prompt = CLASSIFIER_PROMPT
-
 
         messages  = [
             {"role": "system", "content": system_prompt},

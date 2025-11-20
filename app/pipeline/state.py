@@ -31,3 +31,4 @@ class ConversationGraphState(TypedDict, total=False):
     clarification_count: Optional[int]
     problem: Optional[ProblemDescriptor]
     summary: Optional[ProblemSummary]
+    is_emergency: Optional[bool]
