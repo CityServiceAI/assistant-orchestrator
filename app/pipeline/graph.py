@@ -7,11 +7,15 @@ from app.pipeline.nodes import (
     category_node,
     search_service_node,
     ask_clarification_node,
+    route_after_normalize,
     route_after_classification,
     route_after_service_search,
     handle_failure_node,
     generate_appeal_node,
-    classifier_node, emergency_node, location, route_after_location
+    classifier_node,
+    emergency_node,
+    location,
+    route_after_location,
 )
 
 
@@ -29,7 +33,14 @@ def build_complaint_graph():
 
     graph.set_entry_point("normalize")
 
-    graph.add_edge("normalize", "category")
+    graph.add_conditional_edges(
+        "normalize",
+        route_after_normalize,
+        {
+            "end": END,
+            "category": "category",
+        },
+    )
 
     graph.add_conditional_edges(
         "category",

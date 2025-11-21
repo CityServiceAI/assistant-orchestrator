@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.category_rules import pre_classification_rules
@@ -13,12 +14,84 @@ from app.tools.response import assistant_msg
 category_agent = CategoryClassifierAgent()
 
 
+def _create_guardrail_blocked_response(
+    node_name: str, message: str, violation_type: Optional[str] = None
+) -> dict:
+    trace_data = {
+        "node": node_name,
+        "guardrail_blocked": True,
+        "guardrail_message": message,
+    }
+    if violation_type:
+        trace_data["guardrail_violation_type"] = violation_type
+
+    return {
+        "messages": [
+            assistant_msg(
+                "Вибачте, ваш запит не може бути оброблений через політики безпеки. "
+                "Будь ласка, сформулюйте ваше звернення коректно."
+            )
+        ],
+        "guardrail_blocked": True,
+        "trace": [trace_data],
+        "message": None,
+        "issue_text": None,
+    }
+
+
 def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
     last_user_msg = next(
         (m["content"] for m in reversed(state["messages"]) if m["role"] == "user"),
         "",
     )
     logging.info(f"User input {last_user_msg}")
+
+    try:
+        from app.services.guardrails import get_guardrails_service
+
+        guardrails = get_guardrails_service()
+        if guardrails.enabled and last_user_msg:
+            guardrail_check = guardrails.check_user_input(last_user_msg)
+
+            if guardrail_check.is_blocked:
+                logging.warning(
+                    f"Guardrail заблокував запит: {guardrail_check.message}"
+                )
+                violation_type = (
+                    guardrail_check.violation_type.value
+                    if guardrail_check.violation_type
+                    else None
+                )
+                return _create_guardrail_blocked_response(
+                    "normalize_node", guardrail_check.message, violation_type
+                )
+
+            if guardrail_check.action.value == "UNKNOWN":
+                is_timeout = "Таймаут" in (guardrail_check.message or "")
+                if not is_timeout:
+                    logging.error(
+                        f"Guardrails API помилка (fail-safe блокування): {guardrail_check.message}"
+                    )
+                    return {
+                        "messages": [
+                            assistant_msg(
+                                "Вибачте, система перевірки безпеки тимчасово недоступна. "
+                                "Будь ласка, спробуйте пізніше."
+                            )
+                        ],
+                        "guardrail_blocked": True,
+                        "trace": [
+                            {
+                                "node": "normalize_node",
+                                "guardrail_error": True,
+                                "guardrail_message": guardrail_check.message,
+                            }
+                        ],
+                        "message": None,
+                        "issue_text": None,
+                    }
+    except Exception as e:
+        logging.error(f"Помилка перевірки Guardrails: {e}", exc_info=True)
 
     normalized_text, _truncated, warning_codes, safe = normalize_text(last_user_msg)
 
@@ -58,8 +131,12 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
     if "message" not in state:
         raise Exception("No message in state for category_node")
 
-    if state.get("summary") is not None and state.get("summary").get('normalized_description'):
-        text = state.get("summary").get('normalized_description') + " " + state["message"]
+    if state.get("summary") is not None and state.get("summary").get(
+        "normalized_description"
+    ):
+        text = (
+            state.get("summary").get("normalized_description") + " " + state["message"]
+        )
     else:
         text = state["message"]
 
@@ -81,19 +158,27 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
         candidates = rag_search_categories(text, k=5)
         logging.info(f"RAG candidates: {[c.l3_code for c in candidates]}")
 
-        result = category_agent.run(
-            text=text,
-            candidates=candidates,
-            is_clarification=state.get("need_clarification"),
-            previous_summary=state.get("summary")
-        )
+        try:
+            result = category_agent.run(
+                text=text,
+                candidates=candidates,
+                is_clarification=state.get("need_clarification"),
+                previous_summary=state.get("summary"),
+            )
+        except ValueError as e:
+            if "Guardrails" in str(e) or "заблоковано" in str(e):
+                logging.warning(f"Guardrails заблокував запит: {e}")
+                return _create_guardrail_blocked_response("category_node", str(e))
+            raise
 
     return {
         **result,
         "category": result.get("category"),
         "category_confidence": float(result.get("confidence", 0.0)),
         "clarification_count": increase_clarification_count(state, result),
-        "messages": [get_clarification_message(result)] if get_clarification_message(result) else [],
+        "messages": [get_clarification_message(result)]
+        if get_clarification_message(result)
+        else [],
         "trace": [
             {
                 **result,
@@ -106,7 +191,9 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
 
 def get_clarification_message(result):
     if result.get("need_clarification") and result.get("clarification_question"):
-        return assistant_msg(result.get("clarification_question"), "category_classifier")
+        return assistant_msg(
+            result.get("clarification_question"), "category_classifier"
+        )
 
     return None
 
@@ -118,14 +205,17 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
 
     problem = state.get("problem")
     return {
-        "messages": [assistant_msg(
-            f'Ваша проблема {problem.get("code")}: {problem.get("description")}, {problem.get("category_name")}')],
+        "messages": [
+            assistant_msg(
+                f"Ваша проблема {problem.get('code')}: {problem.get('description')}, {problem.get('category_name')}"
+            )
+        ],
         "trace": [
             {
                 **result,
                 "agent": "service",
             }
-        ]
+        ],
     }
 
 
@@ -136,14 +226,17 @@ def ask_clarification_node(state: ConversationGraphState):
 
 def generate_appeal_node(state: ConversationGraphState):
     logging.info(f"Generate appeal node: State: {state}")
-    return {
-        "messages": [assistant_msg("Дякуємо за звернення")]
-    }
+    return {"messages": [assistant_msg("Дякуємо за звернення")]}
+
+
+def route_after_normalize(state: ConversationGraphState):
+    if state.get("guardrail_blocked"):
+        logging.debug("Guardrails заблокував запит - завершуємо виконання")
+        return "end"
+    return "category"
 
 
 def route_after_classification(state: ConversationGraphState):
-    logging.info(f"Route after classification. State {state}")
-
     category = state.get("category")
     confidence = state.get("category_confidence", 0)
     need_clarification = state.get("need_clarification", False)
@@ -181,32 +274,37 @@ def route_after_classification(state: ConversationGraphState):
 
 
 def route_after_service_search(state: ConversationGraphState):
-    logging.info(f"Route after search. State: {state}")
     return "generate_appeal"
 
 
 def handle_failure_node(state: ConversationGraphState):
     return {
         "messages": [
-            assistant_msg("Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"),
             assistant_msg(
-                "Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua")
+                "Вибачте, нажаль я не можу визначити відповідальну службу за вашу проблему"
+            ),
+            assistant_msg(
+                "Зверніться за номером 1551 або створіть звернення на сайті контактного центру міста Києва https://1551.gov.ua"
+            ),
         ]
     }
 
 
 def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
-    logging.info(f"Classifier node: request {state}")
-    result = ClassifierV2().run(
-        state["messages"][-1]['content'],
-        state.get("need_clarification"),
-        state.get('summary')
-    )
+    try:
+        result = ClassifierV2().run(
+            state["messages"][-1]["content"],
+            state.get("need_clarification"),
+            state.get("summary"),
+        )
+    except ValueError as e:
+        if "Guardrails" in str(e) or "заблоковано" in str(e):
+            logging.warning(f"Guardrails заблокував запит: {e}")
+            return _create_guardrail_blocked_response("classifier_node", str(e))
+        raise
 
     if result.get("need_clarification", True):
-        assistant_message = [
-            assistant_msg(result.get("clarification_question"))
-        ]
+        assistant_message = [assistant_msg(result.get("clarification_question"))]
     else:
         assistant_message = []
 
@@ -214,7 +312,6 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         **result,
         "category": get_problem_code(result.get("problem")),
         "category_confidence": result.get("confidence", 0),
-
         "messages": assistant_message,
         "trace": [
             {
@@ -227,10 +324,7 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
 
 
 def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
-    logging.info(f"Emergency node: request {state}")
-
     responsible_entity_type = state.get("problem", {}).get("responsible_entity_type")
-    logging.info(f"Responsible entity type:  {responsible_entity_type}")
 
     match responsible_entity_type:
         case "MunicipalUtility_GasService":
@@ -247,7 +341,7 @@ def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
             return {
                 "messages": [assistant_msg(message)],
             }
-        case 'MunicipalUtility_Electricity':
+        case "MunicipalUtility_Electricity":
             message = """
             ❗️ УВАГА: Небезпека ураження струмом!
             Ми зафіксували вашу скаргу про обрив електропроводів/іскріння. Це вкрай небезпечно!
@@ -258,7 +352,7 @@ def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
             return {
                 "messages": [assistant_msg(message)],
             }
-        case 'MunicipalUtility_Water':
+        case "MunicipalUtility_Water":
             message = """
             ❗️ УВАГА: Аварія на зовнішніх мережах водопостачання!
             Ми отримали ваше повідомлення про витік води (прорив труби / гідранта) на вулиці. Цю скаргу класифіковано як екстрену аварію.
@@ -271,7 +365,7 @@ def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
             return {
                 "messages": [assistant_msg(message)],
             }
-        case 'MunicipalUtility_GreeneryService':
+        case "MunicipalUtility_GreeneryService":
             message = """
             ❗️ УВАГА: Загроза безпеці!
             Дякуємо за повідомлення про повалене дерево, яке загрожує життю/майну. Ми класифікували це як екстрену ситуацію.
@@ -281,7 +375,7 @@ def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
             return {
                 "messages": [assistant_msg(message)],
             }
-        case _:  # Default case (wildcard)\
+        case _:
             message = """
             ❗️ УВАГА: Загроза безпеці!
             Зверніться за номером 112
@@ -297,27 +391,27 @@ def get_problem_code(problem):
 
     return None
 
-def location(state: ConversationGraphState) -> ConversationGraphState:
 
-    result = LocationAgent().run(state.get('summary'), state["messages"][-1]['content'])
+def location(state: ConversationGraphState) -> ConversationGraphState:
+    try:
+        result = LocationAgent().run(
+            state.get("summary"), state["messages"][-1]["content"]
+        )
+    except ValueError as e:
+        if "Guardrails" in str(e) or "заблоковано" in str(e):
+            logging.warning(f"Guardrails заблокував запит: {e}")
+            return _create_guardrail_blocked_response("location", str(e))
+        raise
 
     if result.get("need_clarification", False):
-        assistant_messages = [
-            assistant_msg(result.get("clarification_question"))
-        ]
+        assistant_messages = [assistant_msg(result.get("clarification_question"))]
     else:
         assistant_messages = []
 
-    return {
-        **result,
-        "messages": assistant_messages,
-        "trace": [{
-            **result
-        }]
-    }
+    return {**result, "messages": assistant_messages, "trace": [{**result}]}
+
 
 def route_after_location(state: ConversationGraphState):
-
     if state.get("need_clarification"):
         return "ask_clarification"
 

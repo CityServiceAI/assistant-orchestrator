@@ -32,3 +32,4 @@ class ConversationGraphState(TypedDict, total=False):
     problem: Optional[ProblemDescriptor]
     summary: Optional[ProblemSummary]
     emergency_score: Optional[float]
+    guardrail_blocked: Optional[bool]

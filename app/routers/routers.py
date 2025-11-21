@@ -1,12 +1,12 @@
 from fastapi import APIRouter
 from app.pipeline.graph import build_complaint_graph
-from app.schemas.conversation import Conversation, ConversationContext, ConversationMessage
+from app.schemas.conversation import Conversation
 from app.pipeline.state import ConversationGraphState
-from uuid import uuid4
 
 router = APIRouter(prefix="/conversations", tags=["conversation"])
 
 graph = build_complaint_graph()
+
 
 @router.post("/", response_model=Conversation)
 async def conversation(body: Conversation) -> Conversation:
