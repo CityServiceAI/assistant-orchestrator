@@ -1,10 +1,7 @@
 from langgraph.graph import StateGraph, END
 
-from app.pipeline.state import ConversationGraphState
-
 from app.pipeline.nodes import (
     normalize_node,
-    category_node,
     search_service_node,
     ask_clarification_node,
     route_after_normalize,
@@ -12,18 +9,16 @@ from app.pipeline.nodes import (
     route_after_service_search,
     handle_failure_node,
     generate_appeal_node,
-    classifier_node,
-    emergency_node,
-    location,
-    route_after_location,
+    emergency_node, location, route_after_location, classifier_node_3
 )
+from app.pipeline.state import ConversationGraphState
 
 
 def build_complaint_graph():
     graph = StateGraph(ConversationGraphState)
 
     graph.add_node("normalize", normalize_node)
-    graph.add_node("category", classifier_node)
+    graph.add_node("category", classifier_node_3)
     graph.add_node("service_search", search_service_node)
     graph.add_node("ask_clarification", ask_clarification_node)
     graph.add_node("handle_failure", handle_failure_node)

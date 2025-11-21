@@ -4,6 +4,7 @@ from typing import Optional
 from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.category_rules import pre_classification_rules
 from app.agents.classifier_v2 import ClassifierV2
+from app.agents.classifier_v3 import ClassifierV3
 from app.agents.service_agent import ServiceAgent
 from app.agents.location_agent import LocationAgent
 from app.data.rag import rag_search_categories
@@ -203,13 +204,8 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
 
     result = ServiceAgent().run(state)
 
-    problem = state.get("problem")
     return {
-        "messages": [
-            assistant_msg(
-                f"Ваша проблема {problem.get('code')}: {problem.get('description')}, {problem.get('category_name')}"
-            )
-        ],
+        "messages": list(map(to_assistant_message, state.get("problems", []))),
         "trace": [
             {
                 **result,
@@ -217,6 +213,10 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
             }
         ],
     }
+
+
+def to_assistant_message(x):
+    return assistant_msg(f'Ваша проблема {x.get("code")}: {x.get("description")}, {x.get("category_name")}')
 
 
 def ask_clarification_node(state: ConversationGraphState):
@@ -237,7 +237,9 @@ def route_after_normalize(state: ConversationGraphState):
 
 
 def route_after_classification(state: ConversationGraphState):
-    category = state.get("category")
+    logging.info(f"Route after classification. State {state}")
+
+    problems = state.get("problems", [])
     confidence = state.get("category_confidence", 0)
     need_clarification = state.get("need_clarification", False)
     clarification_count = state.get("clarification_count", 0)
@@ -249,23 +251,11 @@ def route_after_classification(state: ConversationGraphState):
     if emergency_score >= 0.9 and not need_clarification:
         return "emergency"
 
-    if isinstance(category, str) and category.startswith("Z."):
-        if confidence >= 0.8:
-            logging.info(
-                "Category is NOT_MUNICIPAL with high confidence → handle_failure"
-            )
-            return "handle_failure"
+    if need_clarification:
+        logging.info("No category, need clarification → ask_clarification")
+        return "ask_clarification"
 
-        if need_clarification:
-            logging.info("NOT_MUNICIPAL but low confidence → ask_clarification")
-            return "ask_clarification"
-        logging.info("NOT_MUNICIPAL low confidence w/o clarification → handle_failure")
-        return "handle_failure"
-
-    if category is None:
-        if need_clarification:
-            logging.info("No category, need clarification → ask_clarification")
-            return "ask_clarification"
+    if len(problems) < 1:
         logging.info("No category and no clarification → handle_failure")
         return "handle_failure"
 
@@ -304,6 +294,32 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         raise
 
     if result.get("need_clarification", True):
+        assistant_message = [
+            assistant_msg(result.get("clarification_question"))
+        ]
+    else:
+        assistant_message = []
+
+    return {
+        **result,
+        "category": get_problem_code(result.get("problem")),
+        "category_confidence": result.get("confidence", 0),
+
+        "messages": assistant_message,
+        "trace": [
+            {
+                **result,
+                "agent": "category-classifier",
+                "input_text": state.get("message"),
+            }
+        ],
+    }
+
+def classifier_node_3(state: ConversationGraphState) -> ConversationGraphState:
+    logging.info(f"Classifier node: request {state}")
+    result = ClassifierV3().run(state)
+
+    if result.get("need_clarification", True):
         assistant_message = [assistant_msg(result.get("clarification_question"))]
     else:
         assistant_message = []
@@ -324,11 +340,19 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
 
 
 def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
-    responsible_entity_type = state.get("problem", {}).get("responsible_entity_type")
+    messages = []
+    for problem in state.get("problems",[]):
+        messages.append(to_assistant_message(problem))
+        messages.append(assistant_msg(get_emergency_message(problem)))
+    return {
+        "messages": messages
+    }
 
+
+def get_emergency_message(responsible_entity_type):
     match responsible_entity_type:
         case "MunicipalUtility_GasService":
-            message = """
+            return """
             ❗️ УВАГА: Загроза вибуху!
             Ми зафіксували вашу скаргу про запах газу. 
             Будь ласка, негайно виконайте наступні дії:
@@ -338,22 +362,16 @@ def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
             - Негайно зателефонуйте до аварійної служби газу за номером 104 (з мобільного чи стаціонарного телефону).
             - Залиште небезпечне приміщення.
             """
-            return {
-                "messages": [assistant_msg(message)],
-            }
         case "MunicipalUtility_Electricity":
-            message = """
+            return """
             ❗️ УВАГА: Небезпека ураження струмом!
             Ми зафіксували вашу скаргу про обрив електропроводів/іскріння. Це вкрай небезпечно!
             Не наближайтесь до місця обриву ближче ніж на 8 метрів.
             Не торкайтесь проводів.
             Аварійна служба РЕМ (Район електричних мереж) вже повідомлена і прямує на місце події. Будьте обережні.
             """
-            return {
-                "messages": [assistant_msg(message)],
-            }
         case "MunicipalUtility_Water":
-            message = """
+            return """
             ❗️ УВАГА: Аварія на зовнішніх мережах водопостачання!
             Ми отримали ваше повідомлення про витік води (прорив труби / гідранта) на вулиці. Цю скаргу класифіковано як екстрену аварію.
             Бригада аварійно-відновлювальних робіт Вже прямує на місце події для локалізації та усунення витоку.
@@ -362,27 +380,18 @@ def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
             Не намагайтеся самостійно перекрити гідрант або трубу.
             Якщо поруч є відкриті електропроводи, попередьте перехожих про небезпеку.
             """
-            return {
-                "messages": [assistant_msg(message)],
-            }
         case "MunicipalUtility_GreeneryService":
-            message = """
+            return """
             ❗️ УВАГА: Загроза безпеці!
             Дякуємо за повідомлення про повалене дерево, яке загрожує життю/майну. Ми класифікували це як екстрену ситуацію.
             Будь ласка, тримайтеся на безпечній відстані від небезпечного місця.
             Чергова бригада відповідної комунальної служби вже отримала заявку.
             """
-            return {
-                "messages": [assistant_msg(message)],
-            }
         case _:
-            message = """
+            return """
             ❗️ УВАГА: Загроза безпеці!
             Зверніться за номером 112
             """
-            return {
-                "messages": [assistant_msg(message)],
-            }
 
 
 def get_problem_code(problem):

@@ -14,7 +14,7 @@ CATEGORIES_DATA_FILE = os.getenv("CATEGORIES_DATA_FILE", "app/data/categories.cs
 handler_ = [logging.StreamHandler()]
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s",
+    format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s - %(message)s',
     handlers=handler_,
 )
 

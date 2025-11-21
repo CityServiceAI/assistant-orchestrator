@@ -1,10 +1,9 @@
 import json
-import logging
 import re
+from datetime import datetime
 
 
 def get_content_as_json(raw_content):
-    logging.info(f"String to json convertor, raw content: {raw_content}")
     match = re.search(r"```json\n([\s\S]*?)\n```", raw_content)
 
     if match:
@@ -42,3 +41,34 @@ def assistant_msg(content, agent=None):
         "content": content,
         "agent": agent
     }
+
+
+def get_current_date_info():
+    """
+    Генерує рядок з поточною датою та порою року українською мовою.
+    """
+
+    # Отримання поточної дати та часу
+    now = datetime.now()
+
+    # Форматування дати: "21 листопада 2025 року"
+    # %d - день місяця
+    # %B - назва місяця (локалізована)
+    # %Y - рік
+    date_str = now.strftime("%d %B %Y року")
+
+    # Визначення пори року на основі місяця
+    month = now.month
+    if 3 <= month <= 5:
+        season = "весна"
+    elif 6 <= month <= 8:
+        season = "літо"
+    elif 9 <= month <= 11:
+        season = "осінь"
+    else:
+        season = "зима"
+
+    # Комбінування інформації у фінальний рядок
+    info_string = f"{date_str}. Зараз {season}."
+
+    return info_string

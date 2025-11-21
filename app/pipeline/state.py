@@ -1,9 +1,8 @@
-from typing import Optional
 import operator
-import operator
-from typing import Optional
+from typing import Optional, NotRequired
 
 from typing_extensions import Annotated, TypedDict
+
 
 class ProblemDescriptor(TypedDict, total=False):
     code: Optional[str]
@@ -32,4 +31,5 @@ class ConversationGraphState(TypedDict, total=False):
     problem: Optional[ProblemDescriptor]
     summary: Optional[ProblemSummary]
     emergency_score: Optional[float]
+    problems: NotRequired[list[ProblemDescriptor]]
     guardrail_blocked: Optional[bool]
