@@ -14,3 +14,4 @@ async def conversation(body: Conversation) -> Conversation:
     state = graph.invoke(graph_state)
 
     return Conversation(**state)
+
