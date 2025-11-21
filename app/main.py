@@ -23,6 +23,12 @@ def create_app() -> FastAPI:
     init_categories(CATEGORIES_DATA_FILE)
 
     result = FastAPI(title="CityServiceAI Orchestrator")
+
+    @result.get("/health")
+    def health_check():
+        """Endpoint для перевірки стану Додатку. Повертає 200 OK."""
+        return {"status": "ok", "service": "cityserviceai-orchestrator"}
+
     result.include_router(routers.router)
     return result
 
