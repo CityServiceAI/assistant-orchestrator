@@ -362,23 +362,17 @@ def get_clarification_message(result):
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Search service node. State: {state}")
 
-    result = ServiceAgent().run(state)
+    results = ServiceAgent().run(state.get("summary"), state.get("problems"), state.get("location_type"), state.get("location_details"))
 
     return {
-        "messages": list(map(to_assistant_message, state.get("problems", []))),
+        **results,
         "trace": [
             {
-                **result,
+                **results,
                 "agent": "service",
             }
         ],
     }
-
-
-def to_assistant_message(x):
-    return assistant_msg(
-        f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}"
-    )
 
 
 @_trace_node("ask_clarification")
@@ -390,8 +384,15 @@ def ask_clarification_node(state: ConversationGraphState):
 @_trace_node("generate_appeal")
 def generate_appeal_node(state: ConversationGraphState):
     logging.info(f"Generate appeal node: State: {state}")
-    return {"messages": [assistant_msg("Дякуємо за звернення")]}
+    problems = list(map(to_assistant_message, state.get("problems", [])))
+    return {
+        "messages": problems + [assistant_msg("Дякуємо за звернення")]
+    }
 
+def to_assistant_message(x):
+    return assistant_msg(
+        f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}"
+    )
 
 def route_after_normalize(state: ConversationGraphState):
     if state.get("guardrail_blocked"):

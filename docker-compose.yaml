@@ -3,11 +3,22 @@ version: '3.8'
 services:
 
   assistant-orchestrator:
-    image: assistant-orchestrator:1
+    image: assistant-orchestrator:10
     container_name: assistant-orchestrator
     ports:
       - '8000:8000'
     environment:
-      LLM_PROXY_SERVICE_API_URL: https://codemie.lab.epam.com/llms
-      LLM_PROXY_SERVICE_API_KEY: sk-*********************
+      LLM_PROXY_SERVICE_API_URL: ""
+      LLM_PROXY_SERVICE_API_KEY: ""
+#      CATEGORIES_DATA_FILE: /projects/competition/assistant-orchestrator/app/data/categories.csv
+#      CATEGORIES_2_CSV: /projects/competition/assistant-orchestrator/app/data/categories_2.csv
+#      CLASSIFIER_V3_PROMPT: /projects/competition/assistant-orchestrator/app/agents/classifier_v3.yaml
+#
+      AWS_BEDROCK_GUARDRAIL_ID: ""
+      AWS_BEDROCK_GUARDRAIL_VERSION: DRAFT
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
+      AWS_SESSION_TOKEN: ""
+
     restart: unless-stopped

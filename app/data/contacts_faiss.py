@@ -1,7 +1,9 @@
+import os
+
 import faiss
 import numpy as np
 import pandas as pd
-import os
+
 from app.tools.embedings import generate_embeddings, generate_embedding
 
 
@@ -13,7 +15,12 @@ def setup_from_csv(csv_file_path):
     df = pd.read_csv(csv_file_path)
 
     # Підготовка даних для векторизації
-    df['full_description'] = df['description'] + " " + df['category_name'] + " " + df['responsible_entity']
+    df['full_description'] = (
+            df['name'] + " | " +
+            df['description'] + " | " +
+            df['address'] + " | " +
+            df['responsible_entity_type']
+    )
 
     # Генерація векторів
     print("Генерація embeddings...")
@@ -37,15 +44,14 @@ def setup_from_csv(csv_file_path):
     # Можна зберегти як pickle або просто повернути об'єкт df
     return index, df
 
-CATEGORIES_2_CSV = os.getenv("CATEGORIES_2_CSV", "app/data/categories_2.csv")
-FAISS_INDEX, METADATA_DF = setup_from_csv(CATEGORIES_2_CSV)
+CONTACTS_REGISTRY_CSV = os.getenv("CONTACTS_REGISTRY_CSV", "app/data/contacts_registry.csv")
+FAISS_INDEX, METADATA_DF = setup_from_csv(CONTACTS_REGISTRY_CSV)
 
 
-def search_categories(tags, n_results=5):
+def search(query_text, n_results=5):
     if FAISS_INDEX is None or METADATA_DF is None:
         return None
 
-    query_text = " ".join(tags)
     query_embedding = generate_embedding(query_text)
     if query_embedding is None:
         return None
@@ -64,11 +70,13 @@ def search_categories(tags, n_results=5):
         metadata = METADATA_DF.iloc[idx]
 
         formatted_results.append({
-            "Код": metadata['code'],
+            "OrgId": metadata['entity_id'],
+            "Назва": metadata['name'],
+            "Телефон": metadata['phone'],
+            "Електронна пошта": metadata['email'],
+            "Адреса": metadata['address'],
             "Опис": metadata['description'],
-            "Відповідальний": metadata['responsible_entity'],
-            "Категорія": metadata['category_name'],
-            "Релевантність": round(float(distance), 4)
+            "Тип організації": metadata['responsible_entity_type'],
         })
 
     return formatted_results

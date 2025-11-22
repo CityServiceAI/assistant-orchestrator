@@ -14,6 +14,11 @@ class ProblemSummary(TypedDict, total=False):
     normalized_description: Optional[str]
     context_notes: Optional[str]
 
+class LocationDetails(TypedDict, total=False):
+    city: Optional[str]
+    street: Optional[str]
+    building_number: Optional[str]
+    apartment: Optional[str]
 
 class ConversationGraphState(TypedDict, total=False):
     messages: Annotated[list, operator.add]
@@ -33,3 +38,5 @@ class ConversationGraphState(TypedDict, total=False):
     emergency_score: Optional[float]
     problems: NotRequired[list[ProblemDescriptor]]
     guardrail_blocked: Optional[bool]
+    location_type: Optional[str]
+    location_details: Optional[LocationDetails]
