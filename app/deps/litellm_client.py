@@ -14,9 +14,9 @@ _base_client = AzureOpenAI(
 )
 
 try:
-    from app.deps.guarded_llm_client import guarded_client
+    from app.deps.guarded_llm_client import get_guarded_client
 
-    client = guarded_client
+    client = get_guarded_client()
 except Exception as e:
     import logging
 

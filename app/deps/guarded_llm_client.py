@@ -183,4 +183,13 @@ class GuardedLLMClient:
         return getattr(self.base_client, name)
 
 
-guarded_client = GuardedLLMClient(base_client)
+def _get_guarded_client():
+    return GuardedLLMClient(base_client)
+
+guarded_client = None
+
+def get_guarded_client():
+    global guarded_client
+    if guarded_client is None:
+        guarded_client = _get_guarded_client()
+    return guarded_client

@@ -187,8 +187,16 @@ class BedrockGuardrailsService:
             )
 
             action = response.get("action", GuardrailAction.UNKNOWN.value)
+            violations = response.get("violations", [])
 
-            if GuardrailAction.is_intervened(action):
+            action_str = str(action).upper() if action else ""
+            is_intervened = (
+                GuardrailAction.is_intervened(action)
+                or "INTERVENED" in action_str
+                or action_str == "GUARDRAIL_INTERVENED"
+            )
+
+            if is_intervened:
                 violations = response.get("violations", [])
                 violation_type = GuardrailViolationType.UNKNOWN
                 message_parts = []
@@ -246,22 +254,16 @@ class BedrockGuardrailsService:
                 f"Помилка AWS Bedrock Guardrails API ({error_code}): {error_message}"
             )
 
-            if error_code == "UnrecognizedClientException":
-                logging.warning(
-                    "Guardrails недоступний через проблеми з credentials. Продовжуємо без перевірки guardrails."
-                )
-                return GuardrailResult(GuardrailAction.NONE)
-
-            if error_code == "ValidationException":
+            if error_code in ("UnrecognizedClientException", "ValidationException"):
                 logging.warning(
                     "Guardrails недоступний через ValidationException. Продовжуємо без перевірки guardrails."
                 )
                 return GuardrailResult(GuardrailAction.NONE)
 
-            logging.warning(
-                f"Guardrails API помилка ({error_code}). Продовжуємо без перевірки guardrails."
+            return GuardrailResult(
+                GuardrailAction.UNKNOWN,
+                message=f"Guardrails API помилка: {error_message}",
             )
-            return GuardrailResult(GuardrailAction.NONE)
 
         except (ReadTimeoutError, ConnectTimeoutError) as e:
             logging.warning(f"Таймаут Guardrails API: {e}")

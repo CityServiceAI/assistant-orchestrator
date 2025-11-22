@@ -27,24 +27,34 @@ def _trace_node(node_name: str):
                 try:
                     # Отримуємо останнє повідомлення користувача для input (якщо є)
                     last_user_message = next(
-                        (m.get("content", "") for m in reversed(state.get("messages", [])) if m.get("role") == "user"),
-                        None
+                        (
+                            m.get("content", "")
+                            for m in reversed(state.get("messages", []))
+                            if m.get("role") == "user"
+                        ),
+                        None,
                     )
-                    
+
                     input_data = {
                         "messages_count": len(state.get("messages", [])),
                         "has_summary": bool(state.get("summary")),
                         "category": state.get("category"),
                     }
-                    
+
                     # Додаємо текст повідомлення для нод, які обробляють текст
-                    if last_user_message and node_name in ("normalize", "category-classifier", "location"):
-                        input_data["user_message"] = last_user_message[:200]  # Обмежуємо довжину
-                    
+                    if last_user_message and node_name in (
+                        "normalize",
+                        "category-classifier",
+                        "location",
+                    ):
+                        input_data["user_message"] = last_user_message[
+                            :200
+                        ]  # Обмежуємо довжину
+
                     # Визначаємо тип: agent або node
                     agent_nodes = ("category-classifier", "service", "location")
                     node_type = "agent" if node_name in agent_nodes else "node"
-                    
+
                     span = langfuse_service.langfuse.start_span(
                         name=node_name,
                         input=input_data,
@@ -219,8 +229,28 @@ def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
                         "message": None,
                         "issue_text": None,
                     }
+        elif not guardrails.enabled:
+            logging.warning("Guardrails вимкнено - пропускаємо перевірку безпеки")
     except Exception as e:
         logging.error(f"Помилка перевірки Guardrails: {e}", exc_info=True)
+        return {
+            "messages": [
+                assistant_msg(
+                    "Вибачте, система перевірки безпеки тимчасово недоступна. "
+                    "Будь ласка, спробуйте пізніше."
+                )
+            ],
+            "guardrail_blocked": True,
+            "trace": [
+                {
+                    "node": "normalize_node",
+                    "guardrail_error": True,
+                    "guardrail_message": str(e),
+                }
+            ],
+            "message": None,
+            "issue_text": None,
+        }
 
     normalized_text, _truncated, warning_codes, safe = normalize_text(last_user_msg)
 
