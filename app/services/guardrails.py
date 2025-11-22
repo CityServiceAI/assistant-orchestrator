@@ -72,14 +72,6 @@ class BedrockGuardrailsService:
         self.aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         self.aws_session_token = os.getenv("AWS_SESSION_TOKEN")
 
-        # Нормалізуємо credentials
-        if self.aws_access_key_id:
-            self.aws_access_key_id = self.aws_access_key_id.strip() or None
-        if self.aws_secret_access_key:
-            self.aws_secret_access_key = self.aws_secret_access_key.strip() or None
-        if self.aws_session_token:
-            self.aws_session_token = self.aws_session_token.strip() or None
-
         self.enabled = bool(self.guardrail_identifier) and boto3 is not None
 
         if not self.enabled:
@@ -95,10 +87,18 @@ class BedrockGuardrailsService:
             return
 
         try:
-            # Створюємо boto3 клієнт
+            import botocore.config
+
+            config = botocore.config.Config(
+                read_timeout=10,
+                connect_timeout=5,
+                retries={"max_attempts": 1},
+            )
+
             client_params = {
                 "service_name": "bedrock-runtime",
                 "region_name": self.aws_region,
+                "config": config,
             }
 
             if self.aws_access_key_id and self.aws_secret_access_key:
@@ -110,21 +110,23 @@ class BedrockGuardrailsService:
                 )
                 if self.aws_session_token:
                     client_params["aws_session_token"] = self.aws_session_token
-                logging.debug("Використовуються AWS credentials з .env")
-            else:
-                logging.debug("Використовуються системні AWS credentials")
 
-            self.bedrock_runtime = boto3.client(**client_params)
-            logging.info(
-                f"Bedrock Guardrails увімкнено: guardrail_id={self.guardrail_identifier}, "
-                f"version={self.guardrail_version}, region={self.aws_region}"
-            )
+            try:
+                self.bedrock_runtime = boto3.client(**client_params)
+                logging.info(
+                    f"Bedrock Guardrails увімкнено: guardrail_id={self.guardrail_identifier}, "
+                    f"version={self.guardrail_version}, region={self.aws_region}"
+                )
+            except Exception as client_error:
+                logging.error(f"Помилка створення boto3 клієнта: {client_error}")
+                raise
         except Exception as e:
-            logging.error(f"Помилка ініціалізації Bedrock Guardrails: {e}")
+            logging.error(
+                f"Помилка ініціалізації Bedrock Guardrails: {e}", exc_info=True
+            )
             self.enabled = False
 
     def _create_runtime_client(self):
-        """Створює boto3 клієнт з таймаутом для Guardrails API"""
         import botocore.config
 
         config = botocore.config.Config(
@@ -149,7 +151,12 @@ class BedrockGuardrailsService:
             if self.aws_session_token:
                 client_params["aws_session_token"] = self.aws_session_token
 
-        return boto3.client(**client_params)
+        try:
+            client = boto3.client(**client_params)
+            return client
+        except Exception as e:
+            logging.error(f"Помилка створення boto3 клієнта: {e}")
+            raise
 
     def check_content(
         self,
@@ -160,11 +167,11 @@ class BedrockGuardrailsService:
             return GuardrailResult(GuardrailAction.NONE)
 
         try:
-            logging.debug(
-                f"Guardrails перевірка: source={content_type}, text_length={len(text)}"
-            )
-
-            runtime_client = self._create_runtime_client()
+            if not hasattr(self, "bedrock_runtime") or not self.bedrock_runtime:
+                logging.warning("bedrock_runtime не існує, створюємо новий клієнт")
+                runtime_client = self._create_runtime_client()
+            else:
+                runtime_client = self.bedrock_runtime
 
             response = runtime_client.apply_guardrail(
                 guardrailIdentifier=self.guardrail_identifier,
@@ -239,16 +246,22 @@ class BedrockGuardrailsService:
                 f"Помилка AWS Bedrock Guardrails API ({error_code}): {error_message}"
             )
 
-            if error_code == "ValidationException":
-                logging.error(
-                    f"ValidationException: guardrail_id={self.guardrail_identifier}, "
-                    f"version={self.guardrail_version}"
+            if error_code == "UnrecognizedClientException":
+                logging.warning(
+                    "Guardrails недоступний через проблеми з credentials. Продовжуємо без перевірки guardrails."
                 )
+                return GuardrailResult(GuardrailAction.NONE)
 
-            return GuardrailResult(
-                GuardrailAction.UNKNOWN,
-                message=f"AWS API помилка: {error_message}",
+            if error_code == "ValidationException":
+                logging.warning(
+                    "Guardrails недоступний через ValidationException. Продовжуємо без перевірки guardrails."
+                )
+                return GuardrailResult(GuardrailAction.NONE)
+
+            logging.warning(
+                f"Guardrails API помилка ({error_code}). Продовжуємо без перевірки guardrails."
             )
+            return GuardrailResult(GuardrailAction.NONE)
 
         except (ReadTimeoutError, ConnectTimeoutError) as e:
             logging.warning(f"Таймаут Guardrails API: {e}")

@@ -12,8 +12,85 @@ from app.pipeline.state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
 from app.tools.response import assistant_msg
 from app.services.guardrails import get_guardrails_service
+from app.services.langfuse_service import get_langfuse_service
 
 category_agent = CategoryClassifierAgent()
+
+
+def _trace_node(node_name: str):
+    def decorator(func):
+        def wrapper(state: ConversationGraphState):
+            langfuse_service = get_langfuse_service()
+            span = None
+
+            if langfuse_service.enabled and langfuse_service.langfuse:
+                try:
+                    # Отримуємо останнє повідомлення користувача для input (якщо є)
+                    last_user_message = next(
+                        (m.get("content", "") for m in reversed(state.get("messages", [])) if m.get("role") == "user"),
+                        None
+                    )
+                    
+                    input_data = {
+                        "messages_count": len(state.get("messages", [])),
+                        "has_summary": bool(state.get("summary")),
+                        "category": state.get("category"),
+                    }
+                    
+                    # Додаємо текст повідомлення для нод, які обробляють текст
+                    if last_user_message and node_name in ("normalize", "category-classifier", "location"):
+                        input_data["user_message"] = last_user_message[:200]  # Обмежуємо довжину
+                    
+                    # Визначаємо тип: agent або node
+                    agent_nodes = ("category-classifier", "service", "location")
+                    node_type = "agent" if node_name in agent_nodes else "node"
+                    
+                    span = langfuse_service.langfuse.start_span(
+                        name=node_name,
+                        input=input_data,
+                        metadata={
+                            "node_type": "langgraph_node",
+                            "component_type": node_type,
+                        },
+                    )
+                except Exception as e:
+                    logging.debug(
+                        f"Не вдалося створити Langfuse span для ноди {node_name}: {e}"
+                    )
+
+            try:
+                result = func(state)
+
+                if span:
+                    try:
+                        span.update(
+                            output={
+                                "messages_count": len(result.get("messages", [])),
+                                "has_summary": bool(result.get("summary")),
+                                "category": result.get("category"),
+                                "need_clarification": result.get("need_clarification"),
+                            },
+                            metadata={"node_completed": True},
+                        )
+                        span.end()
+                    except Exception as e:
+                        logging.debug(
+                            f"Не вдалося оновити Langfuse span для ноди {node_name}: {e}"
+                        )
+
+                return result
+            except Exception as e:
+                if span:
+                    try:
+                        span.update(level="ERROR", status_message=str(e))
+                        span.end()
+                    except Exception:
+                        pass
+                raise
+
+        return wrapper
+
+    return decorator
 
 
 def _create_guardrail_blocked_response(
@@ -39,6 +116,7 @@ def _create_guardrail_blocked_response(
         "message": None,
         "issue_text": None,
     }
+
 
 def run_guardrails(message) -> ConversationGraphState | None:
     try:
@@ -88,6 +166,8 @@ def run_guardrails(message) -> ConversationGraphState | None:
 
     return None
 
+
+@_trace_node("normalize")
 def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
     last_user_msg = next(
         (m["content"] for m in reversed(state["messages"]) if m["role"] == "user"),
@@ -95,10 +175,52 @@ def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
     )
     logging.info(f"User input {last_user_msg}")
 
-    #ToDo Uncomment to enable validator
-    # guardrails_results = run_guardrails(last_user_msg)
-    # if guardrails_results:
-    #     return guardrails_results
+    try:
+        from app.services.guardrails import get_guardrails_service
+
+        guardrails = get_guardrails_service()
+        if guardrails.enabled and last_user_msg:
+            guardrail_check = guardrails.check_user_input(last_user_msg)
+
+            if guardrail_check.is_blocked:
+                logging.warning(
+                    f"Guardrail заблокував запит: {guardrail_check.message}"
+                )
+                violation_type = (
+                    guardrail_check.violation_type.value
+                    if guardrail_check.violation_type
+                    else None
+                )
+                return _create_guardrail_blocked_response(
+                    "normalize_node", guardrail_check.message, violation_type
+                )
+
+            if guardrail_check.action.value == "UNKNOWN":
+                is_timeout = "Таймаут" in (guardrail_check.message or "")
+                if not is_timeout:
+                    logging.error(
+                        f"Guardrails API помилка (fail-safe блокування): {guardrail_check.message}"
+                    )
+                    return {
+                        "messages": [
+                            assistant_msg(
+                                "Вибачте, система перевірки безпеки тимчасово недоступна. "
+                                "Будь ласка, спробуйте пізніше."
+                            )
+                        ],
+                        "guardrail_blocked": True,
+                        "trace": [
+                            {
+                                "node": "normalize_node",
+                                "guardrail_error": True,
+                                "guardrail_message": guardrail_check.message,
+                            }
+                        ],
+                        "message": None,
+                        "issue_text": None,
+                    }
+    except Exception as e:
+        logging.error(f"Помилка перевірки Guardrails: {e}", exc_info=True)
 
     normalized_text, _truncated, warning_codes, safe = normalize_text(last_user_msg)
 
@@ -134,6 +256,7 @@ def increase_clarification_count(state: ConversationGraphState, result):
     return state.get("clarification_count")
 
 
+@_trace_node("category-classifier")
 def category_node(state: ConversationGraphState) -> ConversationGraphState:
     if "message" not in state:
         raise Exception("No message in state for category_node")
@@ -205,6 +328,7 @@ def get_clarification_message(result):
     return None
 
 
+@_trace_node("service")
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Search service node. State: {state}")
 
@@ -222,14 +346,18 @@ def search_service_node(state: ConversationGraphState) -> ConversationGraphState
 
 
 def to_assistant_message(x):
-    return assistant_msg(f'Ваша проблема {x.get("code")}: {x.get("description")}, {x.get("category_name")}')
+    return assistant_msg(
+        f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}"
+    )
 
 
+@_trace_node("ask_clarification")
 def ask_clarification_node(state: ConversationGraphState):
     logging.info("Ask clarification node.")
     return {}
 
 
+@_trace_node("generate_appeal")
 def generate_appeal_node(state: ConversationGraphState):
     logging.info(f"Generate appeal node: State: {state}")
     return {"messages": [assistant_msg("Дякуємо за звернення")]}
@@ -273,6 +401,7 @@ def route_after_service_search(state: ConversationGraphState):
     return "generate_appeal"
 
 
+@_trace_node("handle_failure")
 def handle_failure_node(state: ConversationGraphState):
     return {
         "messages": [
@@ -286,6 +415,7 @@ def handle_failure_node(state: ConversationGraphState):
     }
 
 
+@_trace_node("category-classifier")
 def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
     try:
         result = ClassifierV2().run(
@@ -300,9 +430,7 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         raise
 
     if result.get("need_clarification", True):
-        assistant_message = [
-            assistant_msg(result.get("clarification_question"))
-        ]
+        assistant_message = [assistant_msg(result.get("clarification_question"))]
     else:
         assistant_message = []
 
@@ -310,7 +438,6 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         **result,
         "category": get_problem_code(result.get("problem")),
         "category_confidence": result.get("confidence", 0),
-
         "messages": assistant_message,
         "trace": [
             {
@@ -321,6 +448,8 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
         ],
     }
 
+
+@_trace_node("category-classifier")
 def classifier_node_3(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Classifier node: request {state}")
     result = ClassifierV3().run(state)
@@ -345,14 +474,13 @@ def classifier_node_3(state: ConversationGraphState) -> ConversationGraphState:
     }
 
 
+@_trace_node("emergency")
 def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
     messages = []
-    for problem in state.get("problems",[]):
+    for problem in state.get("problems", []):
         messages.append(to_assistant_message(problem))
         messages.append(assistant_msg(get_emergency_message(problem)))
-    return {
-        "messages": messages
-    }
+    return {"messages": messages}
 
 
 def get_emergency_message(responsible_entity_type):
@@ -407,6 +535,7 @@ def get_problem_code(problem):
     return None
 
 
+@_trace_node("location")
 def location(state: ConversationGraphState) -> ConversationGraphState:
     try:
         result = LocationAgent().run(

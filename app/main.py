@@ -1,5 +1,9 @@
 import sys
+import os
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # handler_ = [logging.FileHandler(LOG_FILE), logging.StreamHandler()]
 handler_ = [logging.StreamHandler(sys.stdout)]
@@ -9,12 +13,7 @@ logging.basicConfig(
     handlers=handler_,
 )
 
-
 from fastapi import FastAPI
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 from app.routers import routers
 from app.data.loader import init_categories
