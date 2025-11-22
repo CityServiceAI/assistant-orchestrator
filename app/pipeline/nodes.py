@@ -385,18 +385,22 @@ def ask_clarification_node(state: ConversationGraphState):
 @_trace_node("generate_appeal")
 def generate_appeal_node(state: ConversationGraphState):
     logging.debug(f"Generate appeal node: State: {state}")
-    problems = list(map(to_assistant_message, state.get("problems", [])))
+
+    problems = []
+    for x in state.get("problems", []):
+        problems.extend(get_problem_as_assistant_msg(x))
+
     return {
         "messages": problems + [assistant_msg("Дякуємо за звернення")]
     }
 
 
-def to_assistant_message(x):
-
+def get_problem_as_assistant_msg(x):
     contact = x.get("contact_info", {})
-    message = f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}."
-    message += f"Відповідальна Організація:  {contact.get('name')} {contact.get('phone')} {contact.get('email')}"
-    return assistant_msg(message)
+    return [
+        assistant_msg(f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}."),
+        assistant_msg(f"Відповідальна Організація:  {contact.get('name')} {contact.get('phone')} {contact.get('email')}")
+    ]
 
 
 def route_after_normalize(state: ConversationGraphState):
@@ -529,7 +533,7 @@ def classifier_node_3(state: ConversationGraphState) -> ConversationGraphState:
 def emergency_node(state: ConversationGraphState) -> ConversationGraphState:
     messages = []
     for problem in state.get("problems", []):
-        messages.append(to_assistant_message(problem))
+        messages.extend(get_problem_as_assistant_msg(problem))
         messages.append(assistant_msg(get_emergency_message(problem)))
     return {"messages": messages}
 

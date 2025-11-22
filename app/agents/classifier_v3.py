@@ -84,7 +84,7 @@ class ClassifierV3:
             {"role": "user", "content": user_message}
         ]
 
-        logging.info(f"Step 2: LLM request messages {json.dumps(messages, indent=2, ensure_ascii=False)}")
+        logging.debug(f"Step 2: LLM request messages {json.dumps(messages, indent=2, ensure_ascii=False)}")
 
         response = client.chat.completions.create(
             model="gpt-4.1",

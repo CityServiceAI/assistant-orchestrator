@@ -76,7 +76,38 @@ def search(query_text, n_results=5):
             "Електронна пошта": metadata['email'],
             "Адреса": metadata['address'],
             "Опис": metadata['description'],
-            "Тип організації": metadata['responsible_entity_type'],
+            "Тип організації": metadata['responsible_entity_type']
         })
 
     return formatted_results
+
+def get_fallback_by_city(user_city_name):
+    """
+    Знаходить контакт КМДА/1551, що відповідає вказаному місту, у DataFrame контактів.
+    """
+
+    # Фільтруємо DataFrame за типом відповідальності І містом
+    fallback_contact_rows = METADATA_DF[
+        (METADATA_DF['responsible_entity_type'] == 'City_Support_Center') &
+        (
+            METADATA_DF['address'].str.contains(user_city_name, case=False, na=False) |
+            METADATA_DF['description'].str.contains(user_city_name, case=False, na=False)
+        )
+    ]
+
+    if not fallback_contact_rows.empty:
+        # Повертаємо перший знайдений контакт
+        fallback = fallback_contact_rows.iloc[0].to_dict()
+        return {
+            "OrgId": fallback['entity_id'],
+            "Назва": fallback['name'],
+            "Телефон": fallback['phone'],
+            "Електронна пошта": fallback['email'],
+            "Адреса": fallback['address'],
+            "Опис": fallback['description'],
+            "Тип організації": fallback['responsible_entity_type']
+        }
+    else:
+        # Якщо місто не знайдено в реєстрі, повертаємо None або загальний контакт за замовчуванням
+        print(f"Помилка: Не знайдено контакт 1551 для міста '{user_city_name}'.")
+        return None

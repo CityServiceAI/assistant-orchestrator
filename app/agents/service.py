@@ -56,10 +56,16 @@ class ServiceAgent:
         for problem in problems:
             # Використовуємо category_name та location_type для пошуку КОНКРЕТНОГО контакту
             # query_contact = f"{problem['category_name']} {location_type} {problem['responsible_entity_type']}"
-            query_contact = f"{summary['normalized_description']} {location_type} {self.format_location_for_rag(location_details)} {problem['responsible_entity_type']}"
+            responsible_entity_type = problem['responsible_entity_type']
+            query_contact = f"{summary['normalized_description']} {location_type} {self.format_location_for_rag(location_details)} {responsible_entity_type}"
             search_2 = contacts.search(query_contact)
-            logging.debug(f'Пошук по проблемі {problem}')
-            logging.debug(f'Пошук по проблемі {json.dumps(search_2, indent=2, ensure_ascii=False)}')
+
+            if responsible_entity_type == "ManagementCompany/OSBB":
+                fallback = contacts.get_fallback_by_city(location_details.get("city"))
+                search_2.append(fallback)
+
+            logging.info(f'Пошук по проблемі {problem}')
+            logging.info(f'Пошук по проблемі {json.dumps(search_2, indent=2, ensure_ascii=False)}')
             organisations.extend(search_2)
 
         logging.debug(f'Знайдені організації {json.dumps(organisations, indent=2, ensure_ascii=False)}')
