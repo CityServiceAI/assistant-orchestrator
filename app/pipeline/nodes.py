@@ -43,13 +43,13 @@ def _trace_node(node_name: str):
 
                     # Додаємо текст повідомлення для нод, які обробляють текст
                     if last_user_message and node_name in (
-                        "normalize",
-                        "category-classifier",
-                        "location",
+                            "normalize",
+                            "category-classifier",
+                            "location",
                     ):
                         input_data["user_message"] = last_user_message[
-                            :200
-                        ]  # Обмежуємо довжину
+                                                     :200
+                                                     ]  # Обмежуємо довжину
 
                     # Визначаємо тип: agent або node
                     agent_nodes = ("category-classifier", "service", "location")
@@ -104,7 +104,7 @@ def _trace_node(node_name: str):
 
 
 def _create_guardrail_blocked_response(
-    node_name: str, message: str, violation_type: Optional[str] = None
+        node_name: str, message: str, violation_type: Optional[str] = None
 ) -> ConversationGraphState:
     trace_data = {
         "node": node_name,
@@ -292,10 +292,10 @@ def category_node(state: ConversationGraphState) -> ConversationGraphState:
         raise Exception("No message in state for category_node")
 
     if state.get("summary") is not None and state.get("summary").get(
-        "normalized_description"
+            "normalized_description"
     ):
         text = (
-            state.get("summary").get("normalized_description") + " " + state["message"]
+                state.get("summary").get("normalized_description") + " " + state["message"]
         )
     else:
         text = state["message"]
@@ -362,7 +362,12 @@ def get_clarification_message(result):
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Search service node. State: {state}")
 
-    results = ServiceAgent().run(state.get("summary"), state.get("problems"), state.get("location_type"), state.get("location_details"))
+    results = ServiceAgent().run(
+        state.get("summary"),
+        state.get("problems"),
+        state.get("location_type"),
+        state.get("location_details")
+    )
 
     return {
         **results,
@@ -389,10 +394,12 @@ def generate_appeal_node(state: ConversationGraphState):
         "messages": problems + [assistant_msg("Дякуємо за звернення")]
     }
 
+
 def to_assistant_message(x):
     return assistant_msg(
         f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}"
     )
+
 
 def route_after_normalize(state: ConversationGraphState):
     if state.get("guardrail_blocked"):
@@ -407,8 +414,11 @@ def route_after_classification(state: ConversationGraphState):
     problems = state.get("problems", [])
     confidence = state.get("category_confidence", 0)
     need_clarification = state.get("need_clarification", False)
-    clarification_count = state.get("clarification_count", 0)
+    is_out_of_scope = state.get("is_out_of_scope", False)
     emergency_score = state.get("emergency_score", 0)
+
+    if is_out_of_scope:
+        return "out_of_scope"
 
     if emergency_score > 0 and need_clarification:
         return "ask_clarification"
@@ -484,6 +494,18 @@ def classifier_node(state: ConversationGraphState) -> ConversationGraphState:
 def classifier_node_3(state: ConversationGraphState) -> ConversationGraphState:
     logging.info(f"Classifier node: request {state}")
     result = ClassifierV3().run(state)
+
+    if result.get("is_out_of_scope", False):
+        return {
+            **result,
+            "trace": [
+                {
+                    **result,
+                    "agent": "category-classifier",
+                    "input_text": state.get("message"),
+                }
+            ],
+        }
 
     if result.get("need_clarification", True):
         assistant_message = [assistant_msg(result.get("clarification_question"))]
@@ -591,3 +613,10 @@ def route_after_location(state: ConversationGraphState):
         return "ask_clarification"
 
     return "service_search"
+
+
+@_trace_node("out_of_scope")
+def out_of_scope(state: ConversationGraphState):
+    return {
+        "messages": [assistant_msg("Ваш запит виходить за межі моїх компетенцій")]
+    }

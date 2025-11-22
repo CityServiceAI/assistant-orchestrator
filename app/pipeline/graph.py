@@ -1,36 +1,27 @@
 from langgraph.graph import StateGraph, END
 
-from app.pipeline.nodes import (
-    normalize_node,
-    search_service_node,
-    ask_clarification_node,
-    route_after_normalize,
-    route_after_classification,
-    route_after_service_search,
-    handle_failure_node,
-    generate_appeal_node,
-    emergency_node, location, route_after_location, classifier_node_3
-)
+from app.pipeline import nodes
 from app.pipeline.state import ConversationGraphState
 
 
 def build_complaint_graph():
     graph = StateGraph(ConversationGraphState)
 
-    graph.add_node("normalize", normalize_node)
-    graph.add_node("category", classifier_node_3)
-    graph.add_node("service_search", search_service_node)
-    graph.add_node("ask_clarification", ask_clarification_node)
-    graph.add_node("handle_failure", handle_failure_node)
-    graph.add_node("generate_appeal", generate_appeal_node)
-    graph.add_node("emergency", emergency_node)
-    graph.add_node("location", location)
+    graph.add_node("normalize", nodes.normalize_node)
+    graph.add_node("category", nodes.classifier_node_3)
+    graph.add_node("service_search", nodes.search_service_node)
+    graph.add_node("ask_clarification", nodes.ask_clarification_node)
+    graph.add_node("handle_failure", nodes.handle_failure_node)
+    graph.add_node("generate_appeal", nodes.generate_appeal_node)
+    graph.add_node("emergency", nodes.emergency_node)
+    graph.add_node("location", nodes.location)
+    graph.add_node("out_of_scope", nodes.out_of_scope)
 
     graph.set_entry_point("normalize")
 
     graph.add_conditional_edges(
         "normalize",
-        route_after_normalize,
+        nodes.route_after_normalize,
         {
             "end": END,
             "category": "category",
@@ -39,18 +30,19 @@ def build_complaint_graph():
 
     graph.add_conditional_edges(
         "category",
-        route_after_classification,
+        nodes.route_after_classification,
         {
             "handle_failure": "handle_failure",
             "ask_clarification": "ask_clarification",
             "location": "location",
-            "emergency": "emergency"
+            "emergency": "emergency",
+            "out_of_scope": "out_of_scope"
         },
     )
 
     graph.add_conditional_edges(
         "location",
-        route_after_location,
+        nodes.route_after_location,
         {
             "service_search": "service_search",
             "ask_clarification": "ask_clarification",
@@ -60,7 +52,7 @@ def build_complaint_graph():
 
     graph.add_conditional_edges(
         "service_search",
-        route_after_service_search,
+        nodes.route_after_service_search,
         {
             "handle_failure": "handle_failure",
             "generate_appeal": "generate_appeal"
@@ -71,5 +63,6 @@ def build_complaint_graph():
     graph.add_edge("generate_appeal", END)
     graph.add_edge("handle_failure", END)
     graph.add_edge("emergency", END)
+    graph.add_edge("out_of_scope", END)
 
     return graph.compile()
