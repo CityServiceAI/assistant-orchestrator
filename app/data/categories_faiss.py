@@ -37,11 +37,14 @@ def setup_faiss_database_from_csv(csv_file_path):
     # Можна зберегти як pickle або просто повернути об'єкт df
     return index, df
 
-CATEGORIES_2_CSV = os.getenv("CATEGORIES_2_CSV", 'app/data/categories_2.csv')
+CATEGORIES_2_CSV = os.getenv("CATEGORIES_2_CSV", "app/data/categories_2.csv")
 FAISS_INDEX, METADATA_DF = setup_faiss_database_from_csv(CATEGORIES_2_CSV)
 
 
 def search_categories(tags, n_results=5):
+    if FAISS_INDEX is None or METADATA_DF is None:
+        return None
+
     query_text = " ".join(tags)
     query_embedding = generate_embedding(query_text)
     if query_embedding is None:

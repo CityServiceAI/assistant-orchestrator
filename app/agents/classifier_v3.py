@@ -85,13 +85,16 @@ class ClassifierV3:
         logging.info(f'Step 2 tags \n {json.dumps(step1_data.get("tags", []), indent=2, ensure_ascii=False)}')
 
         rag_results = categories.search_categories(step1_data.get("tags", []))
+        if rag_results is None:
+            logging.warning("FAISS не ініціалізовано або помилка пошуку, використовуємо порожній список")
+            rag_results = []
 
         logging.info(f"Step 2 RAG results \n {json.dumps(rag_results, indent=2, ensure_ascii=False)}")
 
         formatted_prompt = AGENT_CONFIG['prompts']['system_prompt_step2'].format(
             current_datetime=get_current_date_info(),
             user_complaint=user_message,
-            potential_categories_json=json.dumps(rag_results),
+            potential_categories_json=json.dumps(rag_results or []),
             chat_history=self.get_dialog(state.get('messages', [])),
             summary_description=step1_data.get('summary', {}).get("normalized_description"),
             summary_context_notes=step1_data.get('summary', {}).get("context_notes")
