@@ -54,7 +54,7 @@ class LocationAgent:
             {"role": "user", "content": user_message}
         ]
 
-        logging.info(f"Location : LLM request: {messages}")
+        logging.debug(f"Location : LLM request: {messages}")
 
         response = client.chat.completions.create(
             model=LLM_MODEL,
@@ -67,17 +67,13 @@ class LocationAgent:
 
         content = get_content_as_str(content)
 
-        logging.info(f"Location: llm response {response}")
+        logging.debug(f"Location: llm response {response}")
         res_json = get_content_as_json(content)
         logging.info(f"Location: extracted response {res_json}")
 
-        result = {
+        return {
             **res_json,
             "usage": response.usage.to_dict(),
             "model": LLM_MODEL,
             "agent": "Location"
         }
-
-        logging.info(f"Location, response {result}")
-
-        return result

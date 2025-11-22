@@ -3,12 +3,19 @@ from typing import Optional, NotRequired
 
 from typing_extensions import Annotated, TypedDict
 
+class ProblemContactInfo(TypedDict, total=False):
+    id: Optional[str]
+    name: Optional[str]
+    phone: Optional[str]
+    email: Optional[str]
+    address: Optional[str]
 
 class ProblemDescriptor(TypedDict, total=False):
     code: Optional[str]
     description: Optional[str]
     responsible_entity_type: Optional[str]
     category_name: Optional[str]
+    contact_info: Optional[ProblemContactInfo]
 
 class ProblemSummary(TypedDict, total=False):
     normalized_description: Optional[str]

@@ -5,7 +5,7 @@ from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.category_rules import pre_classification_rules
 from app.agents.classifier_v2 import ClassifierV2
 from app.agents.classifier_v3 import ClassifierV3
-from app.agents.service_agent import ServiceAgent
+from app.agents.service import ServiceAgent
 from app.agents.location_agent import LocationAgent
 from app.data.rag import rag_search_categories
 from app.pipeline.state import ConversationGraphState
@@ -360,15 +360,11 @@ def get_clarification_message(result):
 
 @_trace_node("service")
 def search_service_node(state: ConversationGraphState) -> ConversationGraphState:
-    logging.info(f"Search service node. State: {state}")
+    logging.debug(f"Search service node. State: {state}")
 
-    results = ServiceAgent().run(
-        state.get("summary"),
-        state.get("problems"),
-        state.get("location_type"),
-        state.get("location_details")
-    )
+    results = ServiceAgent().run(state)
 
+    logging.debug(f"Search service node. Agent results: {results}")
     return {
         **results,
         "trace": [
@@ -388,7 +384,7 @@ def ask_clarification_node(state: ConversationGraphState):
 
 @_trace_node("generate_appeal")
 def generate_appeal_node(state: ConversationGraphState):
-    logging.info(f"Generate appeal node: State: {state}")
+    logging.debug(f"Generate appeal node: State: {state}")
     problems = list(map(to_assistant_message, state.get("problems", [])))
     return {
         "messages": problems + [assistant_msg("Дякуємо за звернення")]
@@ -396,9 +392,11 @@ def generate_appeal_node(state: ConversationGraphState):
 
 
 def to_assistant_message(x):
-    return assistant_msg(
-        f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}"
-    )
+
+    contact = x.get("contact_info", {})
+    message = f"Ваша проблема {x.get('code')}: {x.get('description')}, {x.get('category_name')}."
+    message += f"Відповідальна Організація:  {contact.get('name')} {contact.get('phone')} {contact.get('email')}"
+    return assistant_msg(message)
 
 
 def route_after_normalize(state: ConversationGraphState):
@@ -409,7 +407,7 @@ def route_after_normalize(state: ConversationGraphState):
 
 
 def route_after_classification(state: ConversationGraphState):
-    logging.info(f"Route after classification. State {state}")
+    logging.debug(f"Route after classification. State {state}")
 
     problems = state.get("problems", [])
     confidence = state.get("category_confidence", 0)
@@ -555,24 +553,23 @@ def get_emergency_message(responsible_entity_type):
             Ми зафіксували вашу скаргу про обрив електропроводів/іскріння. Це вкрай небезпечно!
             Не наближайтесь до місця обриву ближче ніж на 8 метрів.
             Не торкайтесь проводів.
-            Аварійна служба РЕМ (Район електричних мереж) вже повідомлена і прямує на місце події. Будьте обережні.
+            Негайно зателефонуйте до аварійної служби за номером 1551 (з мобільного чи стаціонарного телефону).
             """
         case "MunicipalUtility_Water":
             return """
             ❗️ УВАГА: Аварія на зовнішніх мережах водопостачання!
             Ми отримали ваше повідомлення про витік води (прорив труби / гідранта) на вулиці. Цю скаргу класифіковано як екстрену аварію.
-            Бригада аварійно-відновлювальних робіт Вже прямує на місце події для локалізації та усунення витоку.
             Ваші дії:
             Будь ласка, тримайтеся на безпечній відстані від місця прориву.
             Не намагайтеся самостійно перекрити гідрант або трубу.
-            Якщо поруч є відкриті електропроводи, попередьте перехожих про небезпеку.
+            Негайно зателефонуйте до аварійної служби за номером 1551 (з мобільного чи стаціонарного телефону).
             """
         case "MunicipalUtility_GreeneryService":
             return """
             ❗️ УВАГА: Загроза безпеці!
             Дякуємо за повідомлення про повалене дерево, яке загрожує життю/майну. Ми класифікували це як екстрену ситуацію.
             Будь ласка, тримайтеся на безпечній відстані від небезпечного місця.
-            Чергова бригада відповідної комунальної служби вже отримала заявку.
+            Негайно зателефонуйте до аварійної служби за номером 1551 (з мобільного чи стаціонарного телефону).
             """
         case _:
             return """

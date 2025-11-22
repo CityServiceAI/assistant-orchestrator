@@ -2,34 +2,13 @@ import json
 import logging
 import os
 
-import yaml
-
 import app.data.categories_faiss as categories
 # import app.data.categories_chromadb as categories
 from app.deps.litellm_client import client
-from app.tools.response import get_content_as_json, get_content_as_str, get_current_date_info
+from app.tools.response import get_content_as_json, get_content_as_str, get_current_date_info, load_config
 
 CLASSIFIER_V3_PROMPT = os.getenv("CLASSIFIER_V3_PROMPT", "app/agents/classifier_v3.yaml")
-
-
-def load_config(file_path):
-    """
-    Завантажує вміст YAML-файлу в Python-словник.
-    """
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            # Використовуємо SafeLoader для безпечного парсингу
-            config_data = yaml.safe_load(file)
-        return config_data
-    except FileNotFoundError:
-        print(f"Помилка: Файл конфігурації '{file_path}' не знайдено.")
-        return None
-    except yaml.YAMLError as e:
-        print(f"Помилка парсингу YAML-файлу: {e}")
-        return None
-
 AGENT_CONFIG = load_config(CLASSIFIER_V3_PROMPT)
-
 
 class ClassifierV3:
 
@@ -64,7 +43,7 @@ class ClassifierV3:
             {"role": "user", "content": user_message}
         ]
 
-        logging.info(f"Step 1: LLM request messages {json.dumps(messages, indent=2, ensure_ascii=False)}")
+        logging.debug(f"Step 1: LLM request messages {json.dumps(messages, indent=2, ensure_ascii=False)}")
 
         response = client.chat.completions.create(
             model='gpt-4.1-mini',

@@ -2,6 +2,8 @@ import json
 import re
 from datetime import datetime
 
+import yaml
+
 
 def get_content_as_json(raw_content):
     match = re.search(r"```json\n([\s\S]*?)\n```", raw_content)
@@ -72,3 +74,20 @@ def get_current_date_info():
     info_string = f"{date_str}. Зараз {season}."
 
     return info_string
+
+
+def load_config(file_path):
+    """
+    Завантажує вміст YAML-файлу в Python-словник.
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            # Використовуємо SafeLoader для безпечного парсингу
+            config_data = yaml.safe_load(file)
+        return config_data
+    except FileNotFoundError:
+        print(f"Помилка: Файл конфігурації '{file_path}' не знайдено.")
+        return None
+    except yaml.YAMLError as e:
+        print(f"Помилка парсингу YAML-файлу: {e}")
+        return None
