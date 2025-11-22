@@ -1,8 +1,8 @@
 import faiss
 import numpy as np
 import pandas as pd
-
-from app.tools.embedings import generate_embeddings
+import os
+from app.tools.embedings import generate_embeddings, generate_embedding
 
 
 def setup_faiss_database_from_csv(csv_file_path):
@@ -36,3 +36,36 @@ def setup_faiss_database_from_csv(csv_file_path):
     # Зберігаємо DataFrame з метаданими окремо
     # Можна зберегти як pickle або просто повернути об'єкт df
     return index, df
+
+CATEGORIES_2_CSV = os.getenv("CATEGORIES_2_CSV")
+FAISS_INDEX, METADATA_DF = setup_faiss_database_from_csv(CATEGORIES_2_CSV)
+
+
+def search_categories(tags, n_results=5):
+    query_text = " ".join(tags)
+    query_embedding = generate_embedding(query_text)
+    if query_embedding is None:
+        return None
+
+    query_embedding_np = np.array(query_embedding).astype('float32').reshape(1, -1)
+
+    # D - відстані, I - індекси (позиції в DataFrame)
+    distances, indices = FAISS_INDEX.search(query_embedding_np, n_results)
+
+    formatted_results = []
+    for i in range(n_results):
+        idx = indices[0][i]
+        distance = distances[0][i]
+
+        # Отримуємо рядок метаданих з DataFrame за індексом idx
+        metadata = METADATA_DF.iloc[idx]
+
+        formatted_results.append({
+            "Код": metadata['code'],
+            "Опис": metadata['description'],
+            "Відповідальний": metadata['responsible_entity'],
+            "Категорія": metadata['category_name'],
+            "Релевантність": round(float(distance), 4)
+        })
+
+    return formatted_results
