@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Any
 
 from app.agents.category_classifier import CategoryClassifierAgent
 from app.agents.category_rules import pre_classification_rules
@@ -11,13 +11,14 @@ from app.data.rag import rag_search_categories
 from app.pipeline.state import ConversationGraphState
 from app.tools.normalizer_tool import normalize_text
 from app.tools.response import assistant_msg
+from app.services.guardrails import get_guardrails_service
 
 category_agent = CategoryClassifierAgent()
 
 
 def _create_guardrail_blocked_response(
     node_name: str, message: str, violation_type: Optional[str] = None
-) -> dict:
+) -> ConversationGraphState:
     trace_data = {
         "node": node_name,
         "guardrail_blocked": True,
@@ -39,20 +40,11 @@ def _create_guardrail_blocked_response(
         "issue_text": None,
     }
 
-
-def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
-    last_user_msg = next(
-        (m["content"] for m in reversed(state["messages"]) if m["role"] == "user"),
-        "",
-    )
-    logging.info(f"User input {last_user_msg}")
-
+def run_guardrails(message) -> ConversationGraphState | None:
     try:
-        from app.services.guardrails import get_guardrails_service
-
         guardrails = get_guardrails_service()
-        if guardrails.enabled and last_user_msg:
-            guardrail_check = guardrails.check_user_input(last_user_msg)
+        if guardrails.enabled and message:
+            guardrail_check = guardrails.check_user_input(message)
 
             if guardrail_check.is_blocked:
                 logging.warning(
@@ -93,6 +85,20 @@ def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
                     }
     except Exception as e:
         logging.error(f"Помилка перевірки Guardrails: {e}", exc_info=True)
+
+    return None
+
+def normalize_node(state: ConversationGraphState) -> ConversationGraphState:
+    last_user_msg = next(
+        (m["content"] for m in reversed(state["messages"]) if m["role"] == "user"),
+        "",
+    )
+    logging.info(f"User input {last_user_msg}")
+
+    #ToDo Uncomment to enable validator
+    # guardrails_results = run_guardrails(last_user_msg)
+    # if guardrails_results:
+    #     return guardrails_results
 
     normalized_text, _truncated, warning_codes, safe = normalize_text(last_user_msg)
 

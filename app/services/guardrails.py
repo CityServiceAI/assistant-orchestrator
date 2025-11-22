@@ -2,21 +2,13 @@ import logging
 import os
 from typing import Optional
 from enum import Enum
-
-try:
-    import boto3
-    from botocore.exceptions import (
-        ClientError,
-        BotoCoreError,
-        ReadTimeoutError,
-        ConnectTimeoutError,
-    )
-except ImportError:
-    boto3 = None
-    ClientError = Exception
-    BotoCoreError = Exception
-    ReadTimeoutError = Exception
-    ConnectTimeoutError = Exception
+import boto3
+from botocore.exceptions import (
+    ClientError,
+    BotoCoreError,
+    ReadTimeoutError,
+    ConnectTimeoutError,
+)
 
 
 class GuardrailAction(str, Enum):
@@ -290,21 +282,5 @@ _guardrails_service: Optional[BedrockGuardrailsService] = None
 def get_guardrails_service() -> BedrockGuardrailsService:
     global _guardrails_service
     if _guardrails_service is None:
-        try:
-            from dotenv import load_dotenv
-            import os
-
-            env_file = os.path.join(os.getcwd(), ".env")
-            if os.path.exists(env_file):
-                load_dotenv(dotenv_path=env_file, override=False)
-                logging.debug(f"Завантажено .env файл: {env_file}")
-
-        except ImportError:
-            logging.warning(
-                "python-dotenv не встановлено, сподіваємося що load_dotenv() вже викликано"
-            )
-        except Exception as e:
-            logging.error(f"Помилка при завантаженні .env: {e}")
-
         _guardrails_service = BedrockGuardrailsService()
     return _guardrails_service

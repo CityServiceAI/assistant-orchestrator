@@ -1,4 +1,15 @@
+import sys
 import logging
+
+# handler_ = [logging.FileHandler(LOG_FILE), logging.StreamHandler()]
+handler_ = [logging.StreamHandler(sys.stdout)]
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s - %(message)s',
+    handlers=handler_,
+)
+
+
 from fastapi import FastAPI
 import os
 from dotenv import load_dotenv
@@ -9,15 +20,6 @@ from app.routers import routers
 from app.data.loader import init_categories
 
 CATEGORIES_DATA_FILE = os.getenv("CATEGORIES_DATA_FILE", "app/data/categories.csv")
-
-# handler_ = [logging.FileHandler(LOG_FILE), logging.StreamHandler()]
-handler_ = [logging.StreamHandler()]
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s - %(message)s',
-    handlers=handler_,
-)
-
 
 def create_app() -> FastAPI:
     init_categories(CATEGORIES_DATA_FILE)

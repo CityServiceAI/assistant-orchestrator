@@ -119,4 +119,3 @@ class GuardedLLMClient:
 
 
 guarded_client = GuardedLLMClient(base_client)
-client = guarded_client
