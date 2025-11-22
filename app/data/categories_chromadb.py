@@ -48,7 +48,7 @@ def setup_chromadb_database_from_csv(csv_file_path):
     print(f"✅ Векторна база даних '{collection_name}' успішно створена та заповнена.")
     return collection
 
-CATEGORIES_2_CSV = os.getenv("CATEGORIES_2_CSV")
+CATEGORIES_2_CSV = os.getenv("CATEGORIES_2_CSV", 'app/data/categories_2.csv')
 COLLECTION = setup_chromadb_database_from_csv(CATEGORIES_2_CSV)
 
 def search_categories(tags_list, n_results=3):
