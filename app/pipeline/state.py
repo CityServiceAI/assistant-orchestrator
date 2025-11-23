@@ -48,3 +48,4 @@ class ConversationGraphState(TypedDict, total=False):
     location_type: Optional[str]
     location_details: Optional[LocationDetails]
     is_out_of_scope: bool
+    is_no_service: bool

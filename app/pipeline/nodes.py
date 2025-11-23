@@ -441,6 +441,10 @@ def route_after_classification(state: ConversationGraphState):
 
 
 def route_after_service_search(state: ConversationGraphState):
+
+    if state.get("is_no_service", False):
+        return "no_services"
+
     return "generate_appeal"
 
 
@@ -620,4 +624,16 @@ def route_after_location(state: ConversationGraphState):
 def out_of_scope(state: ConversationGraphState):
     return {
         "messages": [assistant_msg("Ваш запит виходить за межі моїх компетенцій")]
+    }
+
+
+def no_service(state: ConversationGraphState):
+    return {
+        "messages": [
+            assistant_msg("Вибачте, за вказаними даними ми я не можу визначити відповідальну службу."),
+            assistant_msg("""
+            Рекомендуємо вам самостійно звернутися до органів місцевого самоврядування (Міська рада або адміністрація вашого міста), 
+            оскільки вони відповідають за організацію комунальних послуг
+            """)
+        ]
     }

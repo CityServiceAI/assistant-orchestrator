@@ -16,6 +16,7 @@ def build_complaint_graph():
     graph.add_node("emergency", nodes.emergency_node)
     graph.add_node("location", nodes.location)
     graph.add_node("out_of_scope", nodes.out_of_scope)
+    graph.add_node("no_services", nodes.no_service)
 
     graph.set_entry_point("normalize")
 
@@ -55,7 +56,8 @@ def build_complaint_graph():
         nodes.route_after_service_search,
         {
             "handle_failure": "handle_failure",
-            "generate_appeal": "generate_appeal"
+            "generate_appeal": "generate_appeal",
+            "no_services": "no_services"
         },
     )
 
@@ -64,5 +66,6 @@ def build_complaint_graph():
     graph.add_edge("handle_failure", END)
     graph.add_edge("emergency", END)
     graph.add_edge("out_of_scope", END)
+    graph.add_edge("no_services", END)
 
     return graph.compile()

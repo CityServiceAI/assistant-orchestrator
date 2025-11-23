@@ -62,13 +62,19 @@ class ServiceAgent:
 
             if responsible_entity_type == "ManagementCompany/OSBB":
                 fallback = contacts.get_fallback_by_city(location_details.get("city"))
-                search_2.append(fallback)
+                if fallback:
+                    search_2.append(fallback)
 
             logging.info(f'Пошук по проблемі {problem}')
             logging.info(f'Пошук по проблемі {json.dumps(search_2, indent=2, ensure_ascii=False)}')
             organisations.extend(search_2)
 
         logging.debug(f'Знайдені організації {json.dumps(organisations, indent=2, ensure_ascii=False)}')
+
+        if len(organisations) < 1:
+            return {
+                "is_no_service": True
+            }
 
         logging.info(f"Organisations: {self.format_organisations_for_prompt(organisations)}")
 
@@ -83,7 +89,7 @@ class ServiceAgent:
         ]
 
         response = client.chat.completions.create(
-            model='gpt-4.1-mini',
+            model='gpt-4.1',
             messages=messages,
             temperature=0.0,
             # max_tokens=200,
